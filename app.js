@@ -16,83 +16,99 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
  if(n==="reporting")loadCatalog().then(renderReports);
 });
 
-function decodeAttempt(src, cfg){
- return new Promise(resolve=>{
-  Quagga.decodeSingle({
-   src,
-   locate:true,
-   numOfWorkers:0,
-   inputStream:{size:cfg.size},
-   locator:{patchSize:cfg.patchSize,halfSample:cfg.halfSample},
-   decoder:{readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader"]}
-  },r=>resolve(r?.codeResult?.code||null));
- });
+function decodeAttempt(src, config){
+  return new Promise((resolve)=>{
+    Quagga.decodeSingle({
+      src,
+      locate:true,
+      numOfWorkers:0,
+      inputStream:{ size: config.size },
+      locator:{ patchSize:config.patchSize, halfSample:config.halfSample },
+      decoder:{ readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader"] }
+    }, result => resolve(result || null));
+  });
 }
 
 async function decodeBarcode(src){
- const attempts=[
-  {size:1600,patchSize:"medium",halfSample:false,label:"hohe Auflösung"},
-  {size:1200,patchSize:"small",halfSample:false,label:"kleiner Barcode"},
-  {size:900,patchSize:"medium",halfSample:true,label:"Standard"},
-  {size:700,patchSize:"small",halfSample:true,label:"kompakt"}
- ];
+  const attempts = [
+    {size:1600, patchSize:"medium", halfSample:false, label:"hohe Auflösung"},
+    {size:1200, patchSize:"small", halfSample:false, label:"kleiner Barcode"},
+    {size:800, patchSize:"medium", halfSample:true, label:"Standard"},
+    {size:0, patchSize:"small", halfSample:false, label:"Originalauflösung"}
+  ];
 
- for(let i=0;i<attempts.length;i++){
-  const a=attempts[i];
-  $("progress").textContent=`Foto wird ausgewertet – Versuch ${i+1} von ${attempts.length}: ${a.label}`;
-  $("scanStatus").textContent="Barcode-Decoder aktiv …";
-  await new Promise(r=>setTimeout(r,80));
-  const code=await decodeAttempt(src,a);
-  if(code && /^\d{8,14}$/.test(String(code).trim())){
-   return String(code).trim();
+  for(let i=0;i<attempts.length;i++){
+    const a=attempts[i];
+    $("progress").textContent=`Foto wird ausgewertet – Versuch ${i+1} von ${attempts.length}: ${a.label}`;
+    $("scanStatus").textContent="Barcode-Decoder aktiv …";
+    await new Promise(r=>setTimeout(r,60));
+
+    const result = await decodeAttempt(src,a);
+    if(result && result.codeResult && result.codeResult.code){
+      const code=String(result.codeResult.code).trim();
+      if(/^\d{8,14}$/.test(code)){
+        return {
+          code,
+          format: result.codeResult.format || "EAN/UPC"
+        };
+      }
+    }
   }
- }
- return null;
+  return null;
 }
 
-$("file").onchange=async e=>{
- const f=e.target.files?.[0];
- if(!f)return;
+$("file").addEventListener("change", async event=>{
+  const file=event.target.files?.[0];
+  if(!file) return;
 
- $("error").classList.add("hidden");
- $("progress").classList.remove("hidden");
- $("result").classList.add("hidden");
- $("scanStatus").textContent="Foto aufgenommen – Verarbeitung startet …";
- status("Foto erhalten");
+  $("error").classList.add("hidden");
+  $("result").classList.add("hidden");
+  status("Foto erhalten");
+  $("scanStatus").textContent="Foto übernommen – Decoder wird gestartet.";
+  $("progress").classList.remove("hidden");
+  $("progress").textContent="Foto wird vorbereitet …";
 
- const u=URL.createObjectURL(f);
+  const objectUrl=URL.createObjectURL(file);
 
- if($("preview")){
-  $("preview").src=u;
-  $("previewWrap").classList.remove("hidden");
- }
+  if($("preview")){
+    $("preview").src=objectUrl;
+    $("previewWrap").classList.remove("hidden");
+  }
 
- try{
   if(typeof Quagga==="undefined"){
-   throw new Error("Barcode-Bibliothek wurde nicht geladen. Bitte Internetverbindung prüfen und Seite neu laden.");
+    $("error").textContent="Der Barcode-Decoder konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden.";
+    $("error").classList.remove("hidden");
+    $("progress").classList.add("hidden");
+    URL.revokeObjectURL(objectUrl);
+    event.target.value="";
+    return;
   }
 
-  const code=await decodeBarcode(u);
+  try{
+    const decoded=await decodeBarcode(objectUrl);
 
-  if(!code){
-   throw new Error("Foto wurde verarbeitet, aber kein EAN-/UPC-Barcode erkannt. Bitte Barcode größer, gerade und ohne Spiegelung fotografieren.");
+    if(!decoded){
+      throw new Error("Foto wurde verarbeitet, aber kein EAN-/UPC-Barcode erkannt. Bitte Barcode größer, gerade und ohne Spiegelung fotografieren.");
+    }
+
+    $("scanStatus").textContent=`Barcode erkannt: ${decoded.code} (${decoded.format})`;
+    status("Barcode erkannt");
+    $("progress").classList.add("hidden");
+
+    await process(decoded.code);
+
+  }catch(err){
+    console.error(err);
+    $("error").textContent="Fehler bei der Bildverarbeitung: "+(err?.message||String(err));
+    $("error").classList.remove("hidden");
+    $("scanStatus").textContent="Auswertung beendet – kein verwertbarer Barcode.";
+    status("Nicht erkannt");
+  }finally{
+    $("progress").classList.add("hidden");
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+    event.target.value="";
   }
-
-  $("scanStatus").textContent=`Barcode erkannt: ${code}`;
-  status("Barcode erkannt");
-  await process(code);
-
- }catch(err){
-  $("error").textContent=err.message||String(err);
-  $("error").classList.remove("hidden");
-  $("scanStatus").textContent="Auswertung beendet – kein verwertbarer Barcode.";
-  status("Nicht erkannt");
- }finally{
-  $("progress").classList.add("hidden");
-  setTimeout(()=>URL.revokeObjectURL(u),1000);
-  e.target.value="";
- }
-};
+});
 
 async function process(ean){
  $("result").classList.remove("hidden");$("ean").textContent=ean;$("duplicate").classList.add("hidden");$("saveState").textContent="";$("lookupState").textContent="Prüfe …";
