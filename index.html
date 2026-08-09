@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827">
-<title>DVD-Katalog v0.3</title>
+<title>DVD-Katalog v0.3.1</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -12,7 +12,7 @@
 <body>
 <main class="app">
 <header>
-  <div><h1>Meine Filmsammlung <span>v0.3</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
+  <div><h1>Meine Filmsammlung <span>v0.3.1</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
   <div id="status" class="pill">Bereit</div>
 </header>
 
@@ -35,6 +35,8 @@
 
     <label class="scanbtn" for="file">📸 DVD-Barcode fotografieren</label>
     <input id="file" type="file" accept="image/*" capture="environment">
+    <div id="previewWrap" class="preview-wrap hidden"><img id="preview" alt="Barcode-Foto"></div>
+    <div id="scanStatus" class="muted"></div>
 
     <div id="progress" class="info hidden">Foto wird ausgewertet …</div>
     <div id="error" class="error hidden"></div>
