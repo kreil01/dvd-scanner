@@ -11,6 +11,16 @@ function init(){
  db=window.supabase.createClient(u,k);$("tech").textContent="Worker und Supabase v0.3 konfiguriert.";
 }
 function status(t){$("status").textContent=t}
+function formatDbError(stage,error){
+ const obj={
+  stage,
+  code:error?.code||null,
+  message:error?.message||String(error||""),
+  details:error?.details||null,
+  hint:error?.hint||null
+ };
+ return JSON.stringify(obj,null,2);
+}
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");
  const n=b.dataset.tab;
@@ -116,13 +126,13 @@ $("file").addEventListener("change", async event=>{
 });
 
 async function process(ean){
- $("result").classList.remove("hidden");$("ean").textContent=ean;$("duplicate").classList.add("hidden");$("saveState").textContent="";$("lookupState").textContent="Prüfe …";
+ $("result").classList.remove("hidden");$("ean").textContent=ean;$("duplicate").classList.add("hidden");$("saveState").textContent="";$("saveError").classList.add("hidden");$("saveError").textContent="";$("lookupState").textContent="Prüfe …";
  if(db){const x=await findEdition(ean);if(x){showExisting(x);return}}
  $("lookupState").textContent="Produktsuche …";
  const d=await lookup(ean);
  if(!d.found){$("title").textContent="Kein Produkt gefunden";$("filmMeta").textContent=d.message||"";$("people").textContent="";$("editionMeta").textContent="";$("lookupState").textContent="Offen";return}
  showLookup(d);
- if(db){const saved=await saveAll(ean,d);$("saveState").textContent=saved?"✓ Film und Ausgabe gespeichert":"⚠ Speichern fehlgeschlagen"}
+ if(db){const saved=await saveAll(ean,d);$("saveState").textContent=saved?"✓ Film und Ausgabe gespeichert":"⚠ Speichern fehlgeschlagen – Details unten"}
  else $("saveState").textContent="⚠ Supabase noch nicht eingerichtet";
 }
 
@@ -148,17 +158,75 @@ async function findEdition(ean){const {data,error}=await db.from("catalog_view")
 
 async function saveAll(ean,d){
  let titleId=null;
+
  if(d.tmdb_id){
-   const {data}=await db.from("titles").select("id").eq("tmdb_type",d.tmdb_type).eq("tmdb_id",d.tmdb_id).limit(1);
-   titleId=data?.[0]?.id||null;
+   const lookup = await db
+     .from("titles")
+     .select("id")
+     .eq("tmdb_type",d.tmdb_type)
+     .eq("tmdb_id",d.tmdb_id)
+     .limit(1);
+
+   if(lookup.error){
+     $("saveError").textContent=formatDbError("titles-select",lookup.error);
+     $("saveError").classList.remove("hidden");
+     return false;
+   }
+
+   titleId=lookup.data?.[0]?.id||null;
  }
+
  if(!titleId){
-   const row={tmdb_type:d.tmdb_type||null,tmdb_id:d.tmdb_id||null,title:d.title||"",original_title:d.original_title||null,release_year:d.release_year||null,genres:d.genres||[],directors:d.directors||[],actors:d.actors||[],runtime_minutes:d.runtime_minutes||null,fsk:d.fsk||null,production_countries:d.production_countries||[],poster_url:d.poster_url||null};
-   const {data,error}=await db.from("titles").insert(row).select("id").single();if(error){console.warn(error);return false}titleId=data.id;
+   const row={
+     tmdb_type:d.tmdb_type||null,
+     tmdb_id:d.tmdb_id||null,
+     title:d.title||"",
+     original_title:d.original_title||null,
+     release_year:d.release_year||null,
+     genres:d.genres||[],
+     directors:d.directors||[],
+     actors:d.actors||[],
+     runtime_minutes:d.runtime_minutes||null,
+     fsk:d.fsk||null,
+     production_countries:d.production_countries||[],
+     poster_url:d.poster_url||null
+   };
+
+   const ins = await db.from("titles").insert(row).select("id").single();
+
+   if(ins.error){
+     $("saveError").textContent=formatDbError("titles-insert",ins.error);
+     $("saveError").classList.remove("hidden");
+     return false;
+   }
+
+   titleId=ins.data.id;
  }
+
  const pos=await getPosition();
- const ed={ean,title_id:titleId,medium:d.medium||null,edition_name:d.edition_name||null,publisher:d.publisher||null,languages:d.languages||[],area:$("area").value.trim()||null,shelf:$("shelf").value.trim()||null,compartment:$("compartment").value.trim()||null,position:pos,source:d.source||null};
- const {error}=await db.from("editions").insert(ed);if(error){console.warn(error);return false}
+
+ const ed={
+   ean,
+   title_id:titleId,
+   medium:d.medium||null,
+   edition_name:d.edition_name||null,
+   publisher:d.publisher||null,
+   languages:d.languages||[],
+   area:$("area").value.trim()||null,
+   shelf:$("shelf").value.trim()||null,
+   compartment:$("compartment").value.trim()||null,
+   position:pos,
+   source:d.source||null
+ };
+
+ const insEdition = await db.from("editions").insert(ed);
+
+ if(insEdition.error){
+   $("saveError").textContent=formatDbError("editions-insert",insEdition.error);
+   $("saveError").classList.remove("hidden");
+   return false;
+ }
+
  if(!$("position").value) $("position").placeholder=String((pos||0)+1);
  return true;
 }
