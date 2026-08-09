@@ -1,5 +1,10 @@
 const $=id=>document.getElementById(id); let db=null,catalog=[];
 
+window.addEventListener("error", e=>{
+  const tech=document.getElementById("tech");
+  if(tech) tech.textContent="JavaScript-Fehler: "+(e.message||"unbekannt");
+});
+
 function init(){
  const u=String(window.SUPABASE_URL||""),k=String(window.SUPABASE_ANON_KEY||"");
  if(!u||!k||u.includes("HIER_")||k.includes("HIER_")){$("tech").textContent="Worker konfiguriert; Supabase v0.3 noch nicht eingerichtet.";return}
@@ -206,7 +211,10 @@ function renderReports(){
  const editions=catalog.length, titleMap=new Map();catalog.forEach(x=>titleMap.set(x.title_id,x));const titles=[...titleMap.values()];
  const movies=titles.filter(x=>x.tmdb_type==="movie").length,series=titles.filter(x=>x.tmdb_type==="tv").length;
  const duplicateTitles=[...groupBy(catalog,x=>x.title_id).entries()].filter(([,v])=>v.length>1);
- const dvdBluray=duplicateTitles.filter(([,v])=>{const m=new Set(v.map(x=>(x.medium||"").toLowerCase());return [...m].some(x=>x.includes("dvd"))&&[...m].some(x=>x.includes("blu"))}).length;
+ const dvdBluray=duplicateTitles.filter(([,v])=>{
+  const m=new Set(v.map(x=>(x.medium||"").toLowerCase()));
+  return [...m].some(x=>x.includes("dvd")) && [...m].some(x=>x.includes("blu"));
+}).length;
  $("kpis").innerHTML=[["Datenträger",editions],["Titel",titles.length],["Filme",movies],["Serien",series],["Mehrfach",duplicateTitles.length],["DVD + Blu-ray",dvdBluray]].map(([l,v])=>`<div class="kpi"><strong>${v}</strong><span>${l}</span></div>`).join("");
  renderBars("mediaReport",countBy(catalog,x=>normalizeMedium(x.medium)));
  const genreItems=[];titles.forEach(x=>(x.genres||[]).forEach(g=>genreItems.push({g})));renderBars("genreReport",countBy(genreItems,x=>x.g));
