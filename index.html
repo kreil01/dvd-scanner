@@ -4,34 +4,36 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111827">
-  <title>DVD-Scanner v0.1.1</title>
+  <title>DVD-Scanner v0.1.2</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
   <main class="app">
     <header>
       <div>
-        <h1>DVD-Scanner <span>v0.1.1</span></h1>
-        <p>Barcode scannen → DVD automatisch erkennen</p>
+        <h1>DVD-Scanner <span>v0.1.2</span></h1>
+        <p>EAN/UPC scannen → Produkt automatisch suchen</p>
       </div>
       <div id="statusPill" class="pill">Bereit</div>
     </header>
 
     <section class="card">
-      <div class="camera-wrap">
-        <video id="video" playsinline muted></video>
-        <div class="scan-frame"></div>
-      </div>
+      <div id="reader" class="reader"></div>
 
       <div class="actions">
-        <button id="startBtn" class="primary">📷 Scanner starten</button>
-        <button id="stopBtn" class="secondary" disabled>Scanner stoppen</button>
+        <button id="startBtn" class="primary">📷 Live-Scanner starten</button>
+        <button id="stopBtn" class="secondary" disabled>Stoppen</button>
+      </div>
+
+      <div class="photo-scan">
+        <label for="fileInput" class="secondary file-label">📸 Barcode fotografieren / Bild wählen</label>
+        <input id="fileInput" type="file" accept="image/*" capture="environment">
       </div>
 
       <p class="hint">
-        Halten Sie den EAN-/UPC-Barcode auf der DVD-Rückseite <strong>waagerecht</strong> in den Rahmen.
-        Beginnen Sie mit etwa 15–25 cm Abstand und bewegen Sie das Smartphone langsam näher.
+        Für DVDs: Barcode möglichst gerade und vollständig ins Bild bringen. Nicht zu nah beginnen.
+        Bei glänzender Folie Reflexionen vermeiden.
       </p>
       <p id="decoderInfo" class="hint"><strong>Decoder:</strong> noch nicht gestartet</p>
     </section>
@@ -58,7 +60,7 @@
 
       <div id="notFound" class="notice hidden">
         <strong>Barcode erkannt, aber kein Produkt gefunden.</strong>
-        <span>Das ist für Version 0.1 ein wichtiges Testergebnis. Der Barcode wird trotzdem unten protokolliert.</span>
+        <span>Der Scanner funktioniert; nur die Produktdatenbank hatte keinen Treffer.</span>
       </div>
 
       <button id="nextBtn" class="primary">Nächste DVD scannen</button>
@@ -68,7 +70,7 @@
       <div class="section-title">
         <div>
           <h2>Testprotokoll</h2>
-          <p>So sehen wir nach 10–20 DVDs, wie gut die automatische Erkennung funktioniert.</p>
+          <p>Damit sehen wir die Trefferquote Ihrer DVDs.</p>
         </div>
         <button id="clearBtn" class="text-button">Leeren</button>
       </div>
@@ -84,16 +86,7 @@
 
       <button id="exportBtn" class="secondary full">CSV-Testprotokoll herunterladen</button>
     </section>
-
-    <section class="card compact">
-      <details>
-        <summary>Scanner funktioniert nicht?</summary>
-        <p>Auf dem Smartphone muss die Seite über HTTPS geöffnet werden und der Browser braucht Kamerazugriff. Chrome/Android bzw. Safari/iPhone funktionieren am zuverlässigsten.</p>
-        <p>Zum Test am Laptop können Sie ebenfalls die Webcam verwenden. Ein USB-Barcodescanner kann in einer späteren Version ergänzt werden.</p>
-      </details>
-    </section>
   </main>
-
   <script src="app.js"></script>
 </body>
 </html>
