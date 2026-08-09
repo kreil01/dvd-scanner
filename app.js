@@ -153,113 +153,87 @@ async function handleBarcode(code,format){
 }
 
 async function lookupProduct(code){
-  // 1) OpenGTINDB zuerst – bessere Chance bei deutschen DVD-/Blu-ray-EANs
-  const openGtin = await lookupOpenGTINDB(code);
-  if(openGtin.found) return openGtin;
+  const workerBase = String(window.DVD_LOOKUP_WORKER_URL || "").trim();
 
-  // 2) Fallback auf UPCitemdb
-  const upc = await lookupUPCItemDB(code);
-  if(upc.found) return upc;
-
-  return {
-    found:false,
-    title:"",
-    brand:"",
-    description:"",
-    image:"",
-    source:"Keine Datenquelle"
-  };
-}
-
-async function lookupOpenGTINDB(code){
-  // OpenGTINDB bietet eine einfache JSON-Schnittstelle über /?ean=...
-  // Manche Browser blockieren direkte CORS-Aufrufe; deshalb Fehler sauber abfangen.
-  const urls = [
-    `https://opengtindb.org/?ean=${encodeURIComponent(code)}&cmd=query&queryid=400000000`
-  ];
-
-  for(const url of urls){
-    try{
-      const response = await fetch(url);
-      if(!response.ok) throw new Error(`HTTP ${response.status}`);
-      const text = await response.text();
-
-      // OpenGTINDB antwortet je nach Endpoint/Format nicht immer als JSON.
-      // Wir versuchen deshalb mehrere bekannte Feldmuster aus Text/JSON zu lesen.
-      let data = null;
-      try { data = JSON.parse(text); } catch(_) {}
-
-      if(data){
-        const candidates = Array.isArray(data) ? data : [data];
-        for(const p of candidates){
-          const title = p.name || p.product || p.product_name || p.title || p.detailname || "";
-          if(title){
-            return {
-              found:true,
-              title,
-              brand:p.vendor || p.brand || p.manufacturer || "",
-              description:p.description || p.details || "",
-              image:p.image || p.image_url || "",
-              source:"OpenGTINDB"
-            };
-          }
-        }
-      }
-
-      // Fallback: bekannte textbasierte Antwortformate auswerten
-      const nameMatch =
-        text.match(/(?:name|product|product_name|detailname)\s*[:=]\s*["']?([^"\r\n<]+)/i) ||
-        text.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
-        text.match(/<title[^>]*>([^<]+)<\/title>/i);
-
-      if(nameMatch && nameMatch[1]){
-        const title = nameMatch[1].trim()
-          .replace(/\s*[-|]\s*OpenGTINDB.*$/i, "")
-          .replace(/^OpenGTINDB\s*[-|:]\s*/i, "");
-
-        if(title && !/opengtindb/i.test(title)){
-          return {
-            found:true,
-            title,
-            brand:"",
-            description:"",
-            image:"",
-            source:"OpenGTINDB"
-          };
-        }
-      }
-    }catch(err){
-      console.warn("OpenGTINDB-Lookup fehlgeschlagen:",err);
-    }
+  if(!workerBase || workerBase.includes("HIER_WORKER_URL_EINTRAGEN")){
+    return {
+      found:false,
+      title:"",
+      brand:"",
+      description:"Worker-URL fehlt in config.js",
+      image:"",
+      source:"Konfiguration fehlt"
+    };
   }
 
-  return {found:false};
-}
-
-async function lookupUPCItemDB(code){
-  const url=`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`;
+  const url = `${workerBase.replace(/\/+$/,"")}/lookup?ean=${encodeURIComponent(code)}`;
 
   try{
-    const response=await fetch(url);
-    if(!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data=await response.json();
+    const response = await fetch(url, { method:"GET" });
+    const data = await response.json();
 
-    if(data?.items?.length){
-      const p=data.items[0];
+    if(!response.ok){
+      console.warn("Worker-Lookup Fehler:", data);
       return {
-        found:true,
-        title:p.title||"Produkt erkannt",
-        brand:p.brand||"",
-        description:p.description||"",
-        image:(p.images&&p.images[0])||"",
-        source:"UPCitemdb"
+        found:false,
+        title:"",
+        brand:"",
+        description:data?.message || data?.error || `HTTP ${response.status}`,
+        image:"",
+        source:"Worker-Fehler"
       };
     }
-  }catch(err){
-    console.warn("UPCitemdb-Lookup fehlgeschlagen:",err);
-  }
 
-  return {found:false};
+    if(data?.found){
+      return {
+        found:true,
+        title:cleanTitle(data.title || "Produkt erkannt"),
+        brand:data.brand || "",
+        description:data.description || "",
+        image:data.image || "",
+        source:data.source || "OpenGTINDB"
+      };
+    }
+
+    return {
+      found:false,
+      title:"",
+      brand:"",
+      description:data?.message || "Kein Produkt gefunden",
+      image:"",
+      source:data?.source || "OpenGTINDB"
+    };
+  }catch(err){
+    console.warn("Worker nicht erreichbar:", err);
+    return {
+      found:false,
+      title:"",
+      brand:"",
+      description:"Worker nicht erreichbar: " + (err?.message || String(err)),
+      image:"",
+      source:"Verbindungsfehler"
+    };
+  }
+}
+
+function cleanTitle(title){
+  let t = String(title || "").trim();
+
+  // Remove marketplace/condition noise
+  t = t.replace(/\|\s*(dvd|blu-?ray|bluray)\b.*$/i, "");
+  t = t.replace(/\|\s*condition\b.*$/i, "");
+  t = t.replace(/\bcondition\s+(good|very good|acceptable|new)\b.*$/i, "");
+
+  // Remove media labels and seller-style author tails
+  t = t.replace(/\[(blu-?ray|bluray|dvd)\]/ig, "");
+  t = t.replace(/\((blu-?ray|bluray|dvd)\)/ig, "");
+  t = t.replace(/\bby\s+[A-ZÄÖÜ][^|,;]{1,40}(?=\s*(\||$))/i, "");
+  t = t.replace(/\s+\|\s+.*$/i, "");
+
+  // Remove dangling punctuation / whitespace
+  t = t.replace(/\s{2,}/g, " ");
+  t = t.replace(/[,\-–—:;|]+\s*$/g, "");
+  return t.trim();
 }
 
 function showProduct(item){
@@ -270,12 +244,12 @@ function showProduct(item){
     if(item.image){coverEl.src=item.image;coverWrap.classList.remove("hidden")}else coverWrap.classList.add("hidden");
   }else{
     lookupState.textContent="Produkt offen"; titleEl.textContent="Barcode erkannt – keine Produktdaten gefunden";
-    brandEl.textContent="";descriptionEl.textContent="";sourceEl.textContent="";coverWrap.classList.add("hidden");notFound.classList.remove("hidden");
+    brandEl.textContent="";descriptionEl.textContent=item.description||"";sourceEl.textContent=item.source?`Datenquelle: ${item.source}`:"";coverWrap.classList.add("hidden");notFound.classList.remove("hidden");
   }
 }
 
 function addToHistory(code,item,format){
-  history.unshift({time:new Date().toISOString(),barcode:code,format,found:!!item.found,title:item.title||"",source:item.source||""});
+  history.unshift({time:new Date().toISOString(),barcode:code,format,found:!!item.found,title:item.title||""});
   history=history.slice(0,100);
   localStorage.setItem("dvdScannerHistory",JSON.stringify(history));
   renderHistory();
@@ -288,7 +262,7 @@ function renderHistory(){
   history.forEach(entry=>{
     const row=document.createElement("div");row.className="history-item";
     const left=document.createElement("div"),t=document.createElement("strong"),m=document.createElement("small");
-    t.textContent=entry.title||entry.barcode;m.textContent=`${entry.barcode}${entry.format?" · "+entry.format:""}${entry.source?" · "+entry.source:""}`;left.append(t,m);
+    t.textContent=entry.title||entry.barcode;m.textContent=`${entry.barcode}${entry.format?" · "+entry.format:""}`;left.append(t,m);
     const right=document.createElement("div");right.className=entry.found?"ok":"missing";right.textContent=entry.found?"✓ Produkt":"✓ Barcode";
     row.append(left,right);historyEl.appendChild(row);
   });
@@ -298,8 +272,8 @@ function exportCsv(){
   if(!history.length)return alert("Noch keine Scans vorhanden.");
   const esc=v=>`"${String(v??"").replaceAll('"','""')}"`;
   const lines=[
-    ["Zeit","Barcode","Format","Produkt gefunden","Titel","Datenquelle"].map(esc).join(";"),
-    ...history.map(x=>[x.time,x.barcode,x.format||"",x.found?"Ja":"Nein",x.title,x.source||""].map(esc).join(";"))
+    ["Zeit","Barcode","Format","Produkt gefunden","Titel"].map(esc).join(";"),
+    ...history.map(x=>[x.time,x.barcode,x.format||"",x.found?"Ja":"Nein",x.title].map(esc).join(";"))
   ];
   const blob=new Blob(["\ufeff"+lines.join("\n")],{type:"text/csv;charset=utf-8"});
   const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download="dvd-scanner-testprotokoll.csv";a.click();URL.revokeObjectURL(u);
