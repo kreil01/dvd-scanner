@@ -4,35 +4,41 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111827">
-  <title>DVD-Scanner v0.1.3</title>
+  <title>DVD-Scanner v0.1.4</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 </head>
 <body>
   <main class="app">
     <header>
       <div>
-        <h1>DVD-Scanner <span>v0.1.3</span></h1>
-        <p>Barcode fotografieren → automatisch erkennen</p>
+        <h1>DVD-Scanner <span>v0.1.4</span></h1>
+        <p>Foto aufnehmen → EAN/UPC lesen → DVD suchen</p>
       </div>
       <div id="statusPill" class="pill">Bereit</div>
     </header>
 
     <section class="card hero">
       <h2>DVD erfassen</h2>
-      <p>
-        Tippen Sie auf den Button, fotografieren Sie den Barcode auf der DVD-Rückseite
-        möglichst groß und gerade. Danach wird der Code automatisch ausgewertet.
-      </p>
+      <p>Fotografieren Sie nur die Rückseite bzw. den Barcode möglichst groß, gerade und scharf.</p>
 
       <label for="fileInput" class="scan-button">📸 DVD-Barcode fotografieren</label>
       <input id="fileInput" type="file" accept="image/*" capture="environment">
 
       <div id="previewWrap" class="preview-wrap hidden">
-        <img id="preview" alt="Barcode-Foto">
+        <img id="preview" alt="Aufgenommenes Barcode-Foto">
       </div>
 
-      <p id="decoderInfo" class="hint"><strong>Status:</strong> Noch kein Foto ausgewählt.</p>
+      <div id="progressBox" class="progress-box hidden">
+        <div class="spinner"></div>
+        <div>
+          <strong id="progressTitle">Foto wird verarbeitet …</strong>
+          <div id="progressDetail">Decoder wird gestartet.</div>
+        </div>
+      </div>
+
+      <div id="errorBox" class="error-box hidden"></div>
+      <p class="hint"><strong>Tipp:</strong> Barcode sollte mindestens etwa die halbe Bildbreite einnehmen.</p>
     </section>
 
     <section id="resultCard" class="card result hidden">
@@ -40,6 +46,7 @@
         <div>
           <div class="label">Erkannter Barcode</div>
           <div id="barcode" class="barcode">–</div>
+          <div id="format" class="format"></div>
         </div>
         <div id="lookupState" class="pill">Suche …</div>
       </div>
@@ -57,7 +64,7 @@
 
       <div id="notFound" class="notice hidden">
         <strong>Barcode erkannt, aber kein Produkt gefunden.</strong>
-        <span>Der Scan war erfolgreich; nur die Produktdatenbank hatte keinen Treffer.</span>
+        <span>Die Barcode-Erkennung funktioniert. Nur die Produktdatenquelle hatte keinen Treffer.</span>
       </div>
 
       <button id="nextBtn" class="primary full">Nächste DVD erfassen</button>
@@ -67,15 +74,15 @@
       <div class="section-title">
         <div>
           <h2>Testprotokoll</h2>
-          <p>So sehen wir die Trefferquote Ihrer Sammlung.</p>
+          <p>Gespeichert wird nur lokal im Browser.</p>
         </div>
         <button id="clearBtn" class="text-button">Leeren</button>
       </div>
 
       <div class="stats">
         <div><strong id="countAll">0</strong><span>gescannt</span></div>
-        <div><strong id="countFound">0</strong><span>erkannt</span></div>
-        <div><strong id="countMissing">0</strong><span>nicht gefunden</span></div>
+        <div><strong id="countFound">0</strong><span>Produkt gefunden</span></div>
+        <div><strong id="countMissing">0</strong><span>Produkt offen</span></div>
       </div>
 
       <div id="historyEmpty" class="empty">Noch keine DVD gescannt.</div>
@@ -83,18 +90,7 @@
 
       <button id="exportBtn" class="secondary full">CSV-Testprotokoll herunterladen</button>
     </section>
-
-    <section class="card compact">
-      <details>
-        <summary>Tipps für zuverlässige Erkennung</summary>
-        <p>Barcode möglichst bildfüllend fotografieren, gerade halten und Spiegelungen vermeiden.</p>
-        <p>Wenn ein Barcode nicht erkannt wird, etwas mehr Abstand wählen und erneut fotografieren.</p>
-      </details>
-    </section>
-
-    <div id="reader" class="hidden-reader"></div>
   </main>
-
   <script src="app.js"></script>
 </body>
 </html>

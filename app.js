@@ -1,11 +1,15 @@
 const fileInput = document.getElementById("fileInput");
 const previewWrap = document.getElementById("previewWrap");
 const preview = document.getElementById("preview");
-const decoderInfo = document.getElementById("decoderInfo");
+const progressBox = document.getElementById("progressBox");
+const progressTitle = document.getElementById("progressTitle");
+const progressDetail = document.getElementById("progressDetail");
+const errorBox = document.getElementById("errorBox");
 const statusPill = document.getElementById("statusPill");
 
 const resultCard = document.getElementById("resultCard");
 const barcodeEl = document.getElementById("barcode");
+const formatEl = document.getElementById("format");
 const lookupState = document.getElementById("lookupState");
 const titleEl = document.getElementById("title");
 const brandEl = document.getElementById("brand");
@@ -26,232 +30,188 @@ const countMissing = document.getElementById("countMissing");
 
 let history = JSON.parse(localStorage.getItem("dvdScannerHistory") || "[]");
 
-const formats = [
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E
-];
-
-function setStatus(text) {
-  statusPill.textContent = text;
+function setStatus(text){ statusPill.textContent = text; }
+function showProgress(title, detail){
+  progressTitle.textContent = title;
+  progressDetail.textContent = detail || "";
+  progressBox.classList.remove("hidden");
+  errorBox.classList.add("hidden");
+}
+function hideProgress(){ progressBox.classList.add("hidden"); }
+function showError(text){
+  hideProgress();
+  errorBox.textContent = text;
+  errorBox.classList.remove("hidden");
+  setStatus("Nicht erkannt");
 }
 
-function beep(success = true) {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.value = success ? 900 : 350;
-    gain.gain.value = 0.08;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    setTimeout(() => { osc.stop(); ctx.close(); }, success ? 120 : 220);
-  } catch (_) {}
-  if (navigator.vibrate) navigator.vibrate(success ? 80 : [80, 60, 80]);
+function beep(success=true){
+  try{
+    const A=window.AudioContext||window.webkitAudioContext;
+    const c=new A(),o=c.createOscillator(),g=c.createGain();
+    o.frequency.value=success?900:350; g.gain.value=.08;
+    o.connect(g); g.connect(c.destination); o.start();
+    setTimeout(()=>{o.stop();c.close()},success?120:220);
+  }catch(_){}
+  if(navigator.vibrate) navigator.vibrate(success?80:[80,60,80]);
 }
 
-fileInput.addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
+function decodeAttempt(src, config){
+  return new Promise((resolve)=>{
+    Quagga.decodeSingle({
+      src,
+      locate:true,
+      numOfWorkers:0,
+      inputStream:{ size: config.size },
+      locator:{ patchSize:config.patchSize, halfSample:config.halfSample },
+      decoder:{ readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader"] }
+    }, result => resolve(result || null));
+  });
+}
 
-  const objectUrl = URL.createObjectURL(file);
-  preview.src = objectUrl;
+async function decodeBarcode(src){
+  const attempts = [
+    {size:1600, patchSize:"medium", halfSample:false, label:"hohe Auflösung"},
+    {size:1200, patchSize:"small", halfSample:false, label:"kleiner Barcode"},
+    {size:800, patchSize:"medium", halfSample:true, label:"Standard"},
+    {size:0, patchSize:"small", halfSample:false, label:"Originalauflösung"}
+  ];
+
+  for(let i=0;i<attempts.length;i++){
+    const a=attempts[i];
+    showProgress("Foto wird ausgewertet …", `Versuch ${i+1} von ${attempts.length}: ${a.label}`);
+    await new Promise(r=>setTimeout(r,60));
+
+    const result = await decodeAttempt(src,a);
+    if(result && result.codeResult && result.codeResult.code){
+      const code=String(result.codeResult.code).trim();
+      if(/^\d{8,14}$/.test(code)){
+        return {code,format:result.codeResult.format || "EAN/UPC"};
+      }
+    }
+  }
+  return null;
+}
+
+fileInput.addEventListener("change", async event=>{
+  const file=event.target.files?.[0];
+  if(!file) return;
+
+  errorBox.classList.add("hidden");
+  resultCard.classList.add("hidden");
+  setStatus("Foto erhalten");
+
+  const objectUrl=URL.createObjectURL(file);
+  preview.src=objectUrl;
   previewWrap.classList.remove("hidden");
 
-  setStatus("Bild wird analysiert …");
-  decoderInfo.innerHTML = "<strong>Status:</strong> Barcode wird gesucht …";
-  resultCard.classList.add("hidden");
-
-  const scanner = new Html5Qrcode("reader", {
-    formatsToSupport: formats,
-    verbose: false
-  });
-
-  try {
-    const code = await scanner.scanFile(file, true);
-    const cleaned = String(code || "").trim();
-
-    if (!/^\d{8,14}$/.test(cleaned)) {
-      throw new Error("Kein gültiger EAN-/UPC-Code erkannt");
-    }
-
-    decoderInfo.innerHTML = "<strong>Status:</strong> Barcode erkannt ✓";
-    setStatus("Barcode erkannt");
-    beep(true);
-
-    await handleBarcode(cleaned);
-  } catch (err) {
-    console.error(err);
-    setStatus("Nicht erkannt");
-    decoderInfo.innerHTML =
-      "<strong>Status:</strong> Kein lesbarer EAN-/UPC-Barcode erkannt. Bitte erneut fotografieren.";
-    beep(false);
-  } finally {
-    try { await scanner.clear(); } catch (_) {}
+  if(typeof Quagga==="undefined"){
+    showError("Der Barcode-Decoder konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden.");
     URL.revokeObjectURL(objectUrl);
-    fileInput.value = "";
-  }
-});
-
-async function handleBarcode(code) {
-  barcodeEl.textContent = code;
-  lookupState.textContent = "Suche …";
-  titleEl.textContent = "DVD wird gesucht …";
-  brandEl.textContent = "";
-  descriptionEl.textContent = "";
-  coverWrap.classList.add("hidden");
-  notFound.classList.add("hidden");
-  resultCard.classList.remove("hidden");
-  resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
-
-  const item = await lookupProduct(code);
-  addToHistory(code, item);
-  showProduct(item);
-}
-
-async function lookupProduct(code) {
-  const url = `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`;
-
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-
-    if (data && Array.isArray(data.items) && data.items.length > 0) {
-      const p = data.items[0];
-      return {
-        found: true,
-        title: p.title || "Produkt erkannt",
-        brand: p.brand || "",
-        description: p.description || "",
-        image: (p.images && p.images[0]) || ""
-      };
-    }
-  } catch (err) {
-    console.warn("Produkt-Lookup fehlgeschlagen:", err);
-  }
-
-  return { found: false, title: "", brand: "", description: "", image: "" };
-}
-
-function showProduct(item) {
-  if (item.found) {
-    lookupState.textContent = "Gefunden ✓";
-    titleEl.textContent = item.title || "Produkt erkannt";
-    brandEl.textContent = item.brand ? `Marke/Anbieter: ${item.brand}` : "";
-    descriptionEl.textContent = item.description || "";
-    notFound.classList.add("hidden");
-
-    if (item.image) {
-      coverEl.src = item.image;
-      coverWrap.classList.remove("hidden");
-    } else {
-      coverWrap.classList.add("hidden");
-    }
-  } else {
-    lookupState.textContent = "Nicht gefunden";
-    titleEl.textContent = "Keine Produktdaten gefunden";
-    brandEl.textContent = "";
-    descriptionEl.textContent = "";
-    coverWrap.classList.add("hidden");
-    notFound.classList.remove("hidden");
-  }
-}
-
-function addToHistory(code, item) {
-  history.unshift({
-    time: new Date().toISOString(),
-    barcode: code,
-    found: !!item.found,
-    title: item.title || ""
-  });
-
-  history = history.slice(0, 100);
-  localStorage.setItem("dvdScannerHistory", JSON.stringify(history));
-  renderHistory();
-}
-
-function renderHistory() {
-  const found = history.filter(x => x.found).length;
-  countAll.textContent = history.length;
-  countFound.textContent = found;
-  countMissing.textContent = history.length - found;
-
-  historyEl.innerHTML = "";
-  historyEmpty.classList.toggle("hidden", history.length > 0);
-
-  history.forEach(entry => {
-    const row = document.createElement("div");
-    row.className = "history-item";
-
-    const left = document.createElement("div");
-    const title = document.createElement("strong");
-    title.textContent = entry.title || entry.barcode;
-
-    const meta = document.createElement("small");
-    meta.textContent = `EAN/UPC ${entry.barcode}`;
-
-    left.append(title, meta);
-
-    const right = document.createElement("div");
-    right.className = entry.found ? "ok" : "missing";
-    right.textContent = entry.found ? "✓ erkannt" : "⚠ offen";
-
-    row.append(left, right);
-    historyEl.appendChild(row);
-  });
-}
-
-function exportCsv() {
-  if (!history.length) {
-    alert("Noch keine Scans vorhanden.");
+    fileInput.value="";
     return;
   }
 
-  const esc = v => `"${String(v ?? "").replaceAll('"', '""')}"`;
+  try{
+    showProgress("Foto wird vorbereitet …","Barcode-Decoder wird gestartet.");
+    const decoded=await decodeBarcode(objectUrl);
 
-  const lines = [
-    ["Zeit", "Barcode", "Erkannt", "Titel"].map(esc).join(";"),
-    ...history.map(x => [
-      x.time,
-      x.barcode,
-      x.found ? "Ja" : "Nein",
-      x.title
-    ].map(esc).join(";"))
-  ];
+    if(!decoded){
+      beep(false);
+      showError("Foto wurde verarbeitet, aber kein EAN-/UPC-Barcode erkannt. Bitte Barcode größer, gerade und ohne Spiegelung fotografieren.");
+      return;
+    }
 
-  const blob = new Blob(["\ufeff" + lines.join("\n")], {
-    type: "text/csv;charset=utf-8"
-  });
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "dvd-scanner-testprotokoll.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-nextBtn.addEventListener("click", () => {
-  resultCard.classList.add("hidden");
-  previewWrap.classList.add("hidden");
-  preview.removeAttribute("src");
-  setStatus("Bereit");
-  decoderInfo.innerHTML = "<strong>Status:</strong> Noch kein Foto ausgewählt.";
-  window.scrollTo({ top: 0, behavior: "smooth" });
-});
-
-clearBtn.addEventListener("click", () => {
-  if (confirm("Testprotokoll wirklich löschen?")) {
-    history = [];
-    localStorage.removeItem("dvdScannerHistory");
-    renderHistory();
+    hideProgress();
+    setStatus("Barcode erkannt ✓");
+    beep(true);
+    await handleBarcode(decoded.code,decoded.format);
+  }catch(err){
+    console.error(err);
+    beep(false);
+    showError("Fehler bei der Bildverarbeitung: "+(err?.message||String(err)));
+  }finally{
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+    fileInput.value="";
   }
 });
 
-exportBtn.addEventListener("click", exportCsv);
+async function handleBarcode(code,format){
+  barcodeEl.textContent=code;
+  formatEl.textContent=`Format: ${format}`;
+  lookupState.textContent="Produktsuche …";
+  titleEl.textContent="DVD wird gesucht …";
+  brandEl.textContent=""; descriptionEl.textContent="";
+  coverWrap.classList.add("hidden"); notFound.classList.add("hidden");
+  resultCard.classList.remove("hidden");
+  resultCard.scrollIntoView({behavior:"smooth",block:"start"});
 
+  const item=await lookupProduct(code);
+  addToHistory(code,item,format);
+  showProduct(item);
+}
+
+async function lookupProduct(code){
+  const url=`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`;
+  try{
+    const response=await fetch(url);
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data=await response.json();
+    if(data?.items?.length){
+      const p=data.items[0];
+      return {found:true,title:p.title||"Produkt erkannt",brand:p.brand||"",description:p.description||"",image:(p.images&&p.images[0])||""};
+    }
+  }catch(err){ console.warn("Produkt-Lookup fehlgeschlagen:",err); }
+  return {found:false,title:"",brand:"",description:"",image:""};
+}
+
+function showProduct(item){
+  if(item.found){
+    lookupState.textContent="Gefunden ✓"; titleEl.textContent=item.title||"Produkt erkannt";
+    brandEl.textContent=item.brand?`Marke/Anbieter: ${item.brand}`:""; descriptionEl.textContent=item.description||"";
+    notFound.classList.add("hidden");
+    if(item.image){coverEl.src=item.image;coverWrap.classList.remove("hidden")}else coverWrap.classList.add("hidden");
+  }else{
+    lookupState.textContent="Produkt offen"; titleEl.textContent="Barcode erkannt – keine Produktdaten gefunden";
+    brandEl.textContent="";descriptionEl.textContent="";coverWrap.classList.add("hidden");notFound.classList.remove("hidden");
+  }
+}
+
+function addToHistory(code,item,format){
+  history.unshift({time:new Date().toISOString(),barcode:code,format,found:!!item.found,title:item.title||""});
+  history=history.slice(0,100);
+  localStorage.setItem("dvdScannerHistory",JSON.stringify(history));
+  renderHistory();
+}
+
+function renderHistory(){
+  const found=history.filter(x=>x.found).length;
+  countAll.textContent=history.length;countFound.textContent=found;countMissing.textContent=history.length-found;
+  historyEl.innerHTML="";historyEmpty.classList.toggle("hidden",history.length>0);
+  history.forEach(entry=>{
+    const row=document.createElement("div");row.className="history-item";
+    const left=document.createElement("div"),t=document.createElement("strong"),m=document.createElement("small");
+    t.textContent=entry.title||entry.barcode;m.textContent=`${entry.barcode}${entry.format?" · "+entry.format:""}`;left.append(t,m);
+    const right=document.createElement("div");right.className=entry.found?"ok":"missing";right.textContent=entry.found?"✓ Produkt":"✓ Barcode";
+    row.append(left,right);historyEl.appendChild(row);
+  });
+}
+
+function exportCsv(){
+  if(!history.length)return alert("Noch keine Scans vorhanden.");
+  const esc=v=>`"${String(v??"").replaceAll('"','""')}"`;
+  const lines=[
+    ["Zeit","Barcode","Format","Produkt gefunden","Titel"].map(esc).join(";"),
+    ...history.map(x=>[x.time,x.barcode,x.format||"",x.found?"Ja":"Nein",x.title].map(esc).join(";"))
+  ];
+  const blob=new Blob(["\ufeff"+lines.join("\n")],{type:"text/csv;charset=utf-8"});
+  const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download="dvd-scanner-testprotokoll.csv";a.click();URL.revokeObjectURL(u);
+}
+
+nextBtn.addEventListener("click",()=>{
+  resultCard.classList.add("hidden");previewWrap.classList.add("hidden");preview.removeAttribute("src");
+  errorBox.classList.add("hidden");hideProgress();setStatus("Bereit");window.scrollTo({top:0,behavior:"smooth"});
+});
+clearBtn.addEventListener("click",()=>{if(confirm("Testprotokoll wirklich löschen?")){history=[];localStorage.removeItem("dvdScannerHistory");renderHistory()}});
+exportBtn.addEventListener("click",exportCsv);
 renderHistory();
