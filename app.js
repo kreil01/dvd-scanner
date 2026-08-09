@@ -56,27 +56,33 @@ async function startScanner() {
   stopBtn.disabled = false;
   setStatus("Kamera startet …");
 
+  const decoderInfo = document.getElementById("decoderInfo");
+
   try {
-    codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+    codeReader = new ZXingBrowser.BrowserMultiFormatOneDReader();
 
-    const devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
-    let deviceId;
+    const constraints = {
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    };
 
-    if (devices.length) {
-      const backCamera = devices.find(d =>
-        /back|rear|environment|rück/i.test(d.label)
-      );
-      deviceId = (backCamera || devices[devices.length - 1]).deviceId;
-    }
-
-    controls = await codeReader.decodeFromVideoDevice(
-      deviceId,
+    controls = await codeReader.decodeFromConstraints(
+      constraints,
       video,
       (result, error, ctrl) => {
         if (result && !scanLocked) {
-          const text = result.getText();
+          const text = result.getText().trim();
+          const format = result.getBarcodeFormat ? String(result.getBarcodeFormat()) : "";
+
           if (/^\d{8,14}$/.test(text)) {
             scanLocked = true;
+            if (decoderInfo) {
+              decoderInfo.innerHTML = `<strong>Decoder:</strong> Barcode erkannt (${format || "1D"})`;
+            }
             handleBarcode(text);
           }
         }
@@ -84,14 +90,20 @@ async function startScanner() {
     );
 
     scanning = true;
-    setStatus("Scanner aktiv");
+    setStatus("EAN-Scanner aktiv");
+    if (decoderInfo) {
+      decoderInfo.innerHTML = "<strong>Decoder:</strong> 1D-Reader aktiv – EAN/UPC wird gesucht";
+    }
   } catch (err) {
     console.error(err);
     setStatus("Kamerafehler");
     startBtn.disabled = false;
     stopBtn.disabled = true;
+    if (decoderInfo) {
+      decoderInfo.innerHTML = `<strong>Decoder-Fehler:</strong> ${String(err.message || err)}`;
+    }
     alert(
-      "Die Kamera konnte nicht gestartet werden.\n\n" +
+      "Die Kamera bzw. der Barcode-Decoder konnte nicht gestartet werden.\n\n" +
       "Bitte prüfen Sie:\n" +
       "• Seite über HTTPS geöffnet?\n" +
       "• Kamerazugriff erlaubt?\n" +

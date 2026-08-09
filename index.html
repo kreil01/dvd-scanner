@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111827">
-  <title>DVD-Scanner v0.1</title>
+  <title>DVD-Scanner v0.1.1</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
 </head>
 <body>
   <main class="app">
     <header>
       <div>
-        <h1>DVD-Scanner <span>v0.1</span></h1>
+        <h1>DVD-Scanner <span>v0.1.1</span></h1>
         <p>Barcode scannen → DVD automatisch erkennen</p>
       </div>
       <div id="statusPill" class="pill">Bereit</div>
@@ -30,8 +30,10 @@
       </div>
 
       <p class="hint">
-        Halten Sie den EAN-/UPC-Barcode auf der DVD-Rückseite waagerecht in den Rahmen.
+        Halten Sie den EAN-/UPC-Barcode auf der DVD-Rückseite <strong>waagerecht</strong> in den Rahmen.
+        Beginnen Sie mit etwa 15–25 cm Abstand und bewegen Sie das Smartphone langsam näher.
       </p>
+      <p id="decoderInfo" class="hint"><strong>Decoder:</strong> noch nicht gestartet</p>
     </section>
 
     <section id="resultCard" class="card result hidden">
