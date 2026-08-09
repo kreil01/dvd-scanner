@@ -28,6 +28,11 @@ const historyEmpty = document.getElementById("historyEmpty");
 const countAll = document.getElementById("countAll");
 const countFound = document.getElementById("countFound");
 const countMissing = document.getElementById("countMissing");
+const diagUrl = document.getElementById("diagUrl");
+const diagStatus = document.getElementById("diagStatus");
+const diagResponse = document.getElementById("diagResponse");
+const diagError = document.getElementById("diagError");
+
 
 let history = JSON.parse(localStorage.getItem("dvdScannerHistory") || "[]");
 
@@ -155,7 +160,13 @@ async function handleBarcode(code,format){
 async function lookupProduct(code){
   const workerBase = String(window.DVD_LOOKUP_WORKER_URL || "").trim();
 
+  diagUrl.textContent = workerBase || "(leer)";
+  diagStatus.textContent = "noch kein Request";
+  diagResponse.textContent = "–";
+  diagError.textContent = "–";
+
   if(!workerBase || workerBase.includes("HIER_WORKER_URL_EINTRAGEN")){
+    diagError.textContent = "Worker-URL fehlt in config.js";
     return {
       found:false,
       title:"",
@@ -167,13 +178,37 @@ async function lookupProduct(code){
   }
 
   const url = `${workerBase.replace(/\/+$/,"")}/lookup?ean=${encodeURIComponent(code)}`;
+  diagUrl.textContent = url;
 
   try{
-    const response = await fetch(url, { method:"GET" });
-    const data = await response.json();
+    const response = await fetch(url, {
+      method:"GET",
+      cache:"no-store",
+      headers:{ "Accept":"application/json" }
+    });
+
+    diagStatus.textContent = `${response.status} ${response.statusText}`;
+
+    const text = await response.text();
+    diagResponse.textContent = text || "(leere Antwort)";
+
+    let data = null;
+    try{
+      data = JSON.parse(text);
+    }catch(parseErr){
+      diagError.textContent = "JSON-Fehler: " + (parseErr?.message || String(parseErr));
+      return {
+        found:false,
+        title:"",
+        brand:"",
+        description:"Worker-Antwort war kein gültiges JSON.",
+        image:"",
+        source:"Antwortfehler"
+      };
+    }
 
     if(!response.ok){
-      console.warn("Worker-Lookup Fehler:", data);
+      diagError.textContent = data?.message || data?.error || `HTTP ${response.status}`;
       return {
         found:false,
         title:"",
@@ -185,31 +220,37 @@ async function lookupProduct(code){
     }
 
     if(data?.found){
+      diagError.textContent = "kein Fehler";
       return {
         found:true,
         title:cleanTitle(data.title || "Produkt erkannt"),
         brand:data.brand || "",
         description:data.description || "",
         image:data.image || "",
-        source:data.source || "OpenGTINDB"
+        source:data.source || "Worker"
       };
     }
 
+    diagError.textContent = data?.message || "Kein Produkt gefunden";
     return {
       found:false,
       title:"",
       brand:"",
       description:data?.message || "Kein Produkt gefunden",
       image:"",
-      source:data?.source || "OpenGTINDB"
+      source:data?.source || "Worker"
     };
+
   }catch(err){
-    console.warn("Worker nicht erreichbar:", err);
+    const msg = err?.message || String(err);
+    diagStatus.textContent = "Request fehlgeschlagen";
+    diagError.textContent = msg;
+
     return {
       found:false,
       title:"",
       brand:"",
-      description:"Worker nicht erreichbar: " + (err?.message || String(err)),
+      description:"Worker nicht erreichbar: " + msg,
       image:"",
       source:"Verbindungsfehler"
     };
