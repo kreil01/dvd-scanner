@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>DVD-Scanner v0.1</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>DVD-Scanner <span>v0.1</span></h1>
+        <p>Barcode scannen → DVD automatisch erkennen</p>
+      </div>
+      <div id="statusPill" class="pill">Bereit</div>
+    </header>
+
+    <section class="card">
+      <div class="camera-wrap">
+        <video id="video" playsinline muted></video>
+        <div class="scan-frame"></div>
+      </div>
+
+      <div class="actions">
+        <button id="startBtn" class="primary">📷 Scanner starten</button>
+        <button id="stopBtn" class="secondary" disabled>Scanner stoppen</button>
+      </div>
+
+      <p class="hint">
+        Halten Sie den EAN-/UPC-Barcode auf der DVD-Rückseite waagerecht in den Rahmen.
+      </p>
+    </section>
+
+    <section id="resultCard" class="card result hidden">
+      <div class="result-head">
+        <div>
+          <div class="label">Erkannter Barcode</div>
+          <div id="barcode" class="barcode">–</div>
+        </div>
+        <div id="lookupState" class="pill">Suche …</div>
+      </div>
+
+      <div id="productArea" class="product">
+        <div id="coverWrap" class="cover-wrap hidden">
+          <img id="cover" alt="Produktbild">
+        </div>
+        <div class="product-text">
+          <h2 id="title">DVD wird gesucht …</h2>
+          <p id="brand"></p>
+          <p id="description"></p>
+        </div>
+      </div>
+
+      <div id="notFound" class="notice hidden">
+        <strong>Barcode erkannt, aber kein Produkt gefunden.</strong>
+        <span>Das ist für Version 0.1 ein wichtiges Testergebnis. Der Barcode wird trotzdem unten protokolliert.</span>
+      </div>
+
+      <button id="nextBtn" class="primary">Nächste DVD scannen</button>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <h2>Testprotokoll</h2>
+          <p>So sehen wir nach 10–20 DVDs, wie gut die automatische Erkennung funktioniert.</p>
+        </div>
+        <button id="clearBtn" class="text-button">Leeren</button>
+      </div>
+
+      <div class="stats">
+        <div><strong id="countAll">0</strong><span>gescannt</span></div>
+        <div><strong id="countFound">0</strong><span>erkannt</span></div>
+        <div><strong id="countMissing">0</strong><span>nicht gefunden</span></div>
+      </div>
+
+      <div id="historyEmpty" class="empty">Noch keine DVD gescannt.</div>
+      <div id="history" class="history"></div>
+
+      <button id="exportBtn" class="secondary full">CSV-Testprotokoll herunterladen</button>
+    </section>
+
+    <section class="card compact">
+      <details>
+        <summary>Scanner funktioniert nicht?</summary>
+        <p>Auf dem Smartphone muss die Seite über HTTPS geöffnet werden und der Browser braucht Kamerazugriff. Chrome/Android bzw. Safari/iPhone funktionieren am zuverlässigsten.</p>
+        <p>Zum Test am Laptop können Sie ebenfalls die Webcam verwenden. Ein USB-Barcodescanner kann in einer späteren Version ergänzt werden.</p>
+      </details>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
