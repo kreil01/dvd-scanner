@@ -1,114 +1,93 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#111827">
-  <title>DVD-Scanner v0.1.8</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>DVD-Katalog v0.3</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <main class="app">
-    <header>
+<main class="app">
+<header>
+  <div><h1>Meine Filmsammlung <span>v0.3</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
+  <div id="status" class="pill">Bereit</div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="scan">📸 Erfassen</button>
+  <button class="tab" data-tab="collection">🔎 Sammlung</button>
+  <button class="tab" data-tab="reporting">📊 Reporting</button>
+</nav>
+
+<section id="scanPanel" class="panel">
+  <div class="card">
+    <h2>Neue DVD / Blu-ray erfassen</h2>
+    <div class="location-grid">
+      <label>Bereich<input id="area" placeholder="z. B. Wohnzimmer"></label>
+      <label>Regal<input id="shelf" placeholder="z. B. Regal 2"></label>
+      <label>Fach<input id="compartment" placeholder="z. B. Fach 3"></label>
+      <label>Position<input id="position" type="number" min="1" placeholder="automatisch"></label>
+    </div>
+    <p class="muted">Position bleibt leer, wenn sie automatisch hochgezählt werden soll.</p>
+
+    <label class="scanbtn" for="file">📸 DVD-Barcode fotografieren</label>
+    <input id="file" type="file" accept="image/*" capture="environment">
+
+    <div id="progress" class="info hidden">Foto wird ausgewertet …</div>
+    <div id="error" class="error hidden"></div>
+  </div>
+
+  <div id="result" class="card hidden">
+    <div class="row">
+      <div><small>EAN</small><div id="ean" class="ean"></div></div>
+      <div id="lookupState" class="pill"></div>
+    </div>
+    <div class="result-grid">
+      <img id="poster" class="poster hidden" alt="Cover">
       <div>
-        <h1>DVD-Scanner <span>v0.1.8</span></h1>
-        <p>Foto aufnehmen → EAN/UPC lesen → DVD suchen</p>
+        <h2 id="title"></h2>
+        <p id="filmMeta"></p>
+        <p id="people"></p>
+        <p id="editionMeta"></p>
+        <p id="saveState"></p>
       </div>
-      <div id="statusPill" class="pill">Bereit</div>
-    </header>
+    </div>
+    <div id="duplicate" class="warn hidden"></div>
+    <button id="next" class="primary full">Nächste DVD</button>
+  </div>
+</section>
 
-    <section class="card hero">
-      <h2>DVD erfassen</h2>
-      <p>Fotografieren Sie nur die Rückseite bzw. den Barcode möglichst groß, gerade und scharf.</p>
+<section id="collectionPanel" class="panel hidden">
+  <div class="card">
+    <div class="row">
+      <div><h2>Sammlung</h2><p><strong id="count">0</strong> physische Ausgaben</p></div>
+      <button id="refresh">Aktualisieren</button>
+    </div>
+    <input id="search" class="search" placeholder="Titel, Schauspieler, Regisseur, Genre, Jahr, FSK, EAN, Standort …">
+    <div id="searchSummary" class="muted"></div>
+    <div id="groups"></div>
+  </div>
+</section>
 
-      <label for="fileInput" class="scan-button">📸 DVD-Barcode fotografieren</label>
-      <input id="fileInput" type="file" accept="image/*" capture="environment">
+<section id="reportingPanel" class="panel hidden">
+  <div class="card">
+    <div class="row"><div><h2>Reporting</h2><p>Aktueller Bestand</p></div><button id="refreshReport">Aktualisieren</button></div>
+    <div id="kpis" class="kpis"></div>
+  </div>
+  <div class="card"><h2>Medien</h2><div id="mediaReport"></div></div>
+  <div class="card"><h2>Genres</h2><div id="genreReport"></div></div>
+  <div class="card"><h2>Doppelte Filme</h2><div id="duplicateReport"></div></div>
+  <div class="card"><h2>Standorte</h2><div id="locationReport"></div></div>
+</section>
 
-      <div id="previewWrap" class="preview-wrap hidden">
-        <img id="preview" alt="Aufgenommenes Barcode-Foto">
-      </div>
-
-      <div id="progressBox" class="progress-box hidden">
-        <div class="spinner"></div>
-        <div>
-          <strong id="progressTitle">Foto wird verarbeitet …</strong>
-          <div id="progressDetail">Decoder wird gestartet.</div>
-        </div>
-      </div>
-
-      <div id="errorBox" class="error-box hidden"></div>
-      <p class="hint"><strong>Tipp:</strong> Barcode sollte mindestens etwa die halbe Bildbreite einnehmen.</p>
-    </section>
-
-    <section id="resultCard" class="card result hidden">
-      <div class="result-head">
-        <div>
-          <div class="label">Erkannter Barcode</div>
-          <div id="barcode" class="barcode">–</div>
-          <div id="format" class="format"></div>
-        </div>
-        <div id="lookupState" class="pill">Suche …</div>
-      </div>
-
-      <div class="product">
-        <div id="coverWrap" class="cover-wrap hidden">
-          <img id="cover" alt="Produktbild">
-        </div>
-        <div class="product-text">
-          <h2 id="title">DVD wird gesucht …</h2>
-          <p id="brand"></p>
-          <p id="description"></p>
-          <p id="source"></p>
-        </div>
-      </div>
-
-      <div id="notFound" class="notice hidden">
-        <strong>Barcode erkannt, aber kein Produkt gefunden.</strong>
-        <span>Die Barcode-Erkennung funktioniert. Nur die Produktdatenquelle hatte keinen Treffer.</span>
-      </div>
-
-      <button id="nextBtn" class="primary full">Nächste DVD erfassen</button>
-    </section>
-
-    <section class="card">
-      <div class="section-title">
-        <div>
-          <h2>Testprotokoll</h2>
-          <p>Gespeichert wird nur lokal im Browser.</p>
-        </div>
-        <button id="clearBtn" class="text-button">Leeren</button>
-      </div>
-
-      <div class="stats">
-        <div><strong id="countAll">0</strong><span>gescannt</span></div>
-        <div><strong id="countFound">0</strong><span>Produkt gefunden</span></div>
-        <div><strong id="countMissing">0</strong><span>Produkt offen</span></div>
-      </div>
-
-      <div id="historyEmpty" class="empty">Noch keine DVD gescannt.</div>
-      <div id="history" class="history"></div>
-
-      <button id="exportBtn" class="secondary full">CSV-Testprotokoll herunterladen</button>
-    </section>
-
-    <section class="card">
-      <div class="section-title">
-        <div>
-          <h2>Diagnose</h2>
-          <p>Diese Angaben helfen, die Verbindung zum Worker zu prüfen.</p>
-        </div>
-      </div>
-      <div class="diag-grid">
-        <div><strong>Worker-URL</strong><pre id="diagUrl">–</pre></div>
-        <div><strong>HTTP-Status</strong><pre id="diagStatus">–</pre></div>
-        <div><strong>Worker-Antwort</strong><pre id="diagResponse">–</pre></div>
-        <div><strong>Fehler</strong><pre id="diagError">–</pre></div>
-      </div>
-    </section>
-
-  </main>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+<div class="card compact">
+  <details><summary>Technischer Status</summary><p id="tech"></p></details>
+</div>
+</main>
+<script src="config.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
