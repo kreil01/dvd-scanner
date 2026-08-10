@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827">
-<title>DVD-Katalog v0.3.5</title>
+<title>DVD-Katalog v0.4</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -12,7 +12,7 @@
 <body>
 <main class="app">
 <header>
-  <div><h1>Meine Filmsammlung <span>v0.3.5</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
+  <div><h1>Meine Filmsammlung <span>v0.4</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
   <div id="status" class="pill">Bereit</div>
 </header>
 
@@ -95,6 +95,50 @@
     <div><strong>Key-Info</strong><pre id="diagSupabaseKey">–</pre></div>
     <div><strong>Test</strong><pre id="diagSupabaseTest">–</pre></div>
     <div><strong>Antwort / Fehler</strong><pre id="diagSupabaseResponse">–</pre></div>
+  </div>
+</div>
+
+
+<div id="editOverlay" class="overlay hidden">
+  <div class="modal">
+    <div class="row">
+      <h2>Eintrag bearbeiten</h2>
+      <button id="closeEdit" class="secondary">Schließen</button>
+    </div>
+
+    <h3>Filmdaten</h3>
+    <label>Titel<input id="editTitle"></label>
+    <label>Schauspieler <span class="muted">(durch Komma trennen)</span>
+      <textarea id="editActors" rows="3"></textarea>
+    </label>
+    <label>Regisseur <span class="muted">(durch Komma trennen)</span>
+      <textarea id="editDirectors" rows="2"></textarea>
+    </label>
+
+    <h3>Physische Ausgabe</h3>
+    <label>Medium
+      <select id="editMedium">
+        <option value="">– auswählen –</option>
+        <option>DVD</option>
+        <option>Blu-ray</option>
+        <option>4K UHD</option>
+        <option>Sonstiges</option>
+      </select>
+    </label>
+
+    <div class="location-grid">
+      <label>Bereich<input id="editArea"></label>
+      <label>Regal<input id="editShelf"></label>
+      <label>Fach<input id="editCompartment"></label>
+      <label>Position<input id="editPosition" type="number" min="1"></label>
+    </div>
+
+    <div id="editError" class="error hidden"></div>
+
+    <div class="edit-actions">
+      <button id="saveEdit" class="primary">Änderungen speichern</button>
+      <button id="deleteEdition" class="danger">Ausgabe löschen</button>
+    </div>
   </div>
 </div>
 

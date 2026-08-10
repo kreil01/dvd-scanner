@@ -1,4 +1,4 @@
-const $=id=>document.getElementById(id); let db=null,catalog=[];
+const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null;
 
 window.addEventListener("error", e=>{
   const tech=document.getElementById("tech");
@@ -336,8 +336,102 @@ function renderSearch(){
 }
 function movieCard(x,reason){
  const d=document.createElement("div");d.className="movie";
- d.innerHTML=`<div><h4>${esc(x.title)}</h4><div class="muted">${[x.release_year,x.genres?.join(", "),x.medium].filter(Boolean).map(esc).join(" · ")}</div><div class="muted">Treffer: ${esc(reason)}</div></div><div class="loc">${esc(locationText(x)||"–")}</div>`;return d;
+ const left=document.createElement("div");
+ const h=document.createElement("h4");h.textContent=x.title||"(ohne Titel)";
+ const meta=document.createElement("div");meta.className="muted";
+ meta.textContent=[x.release_year,x.genres?.join(", "),x.medium].filter(Boolean).join(" · ");
+ const why=document.createElement("div");why.className="muted";why.textContent=`Treffer: ${reason}`;
+ const actions=document.createElement("div");actions.className="movie-actions";
+ const edit=document.createElement("button");edit.className="secondary smallbtn";edit.textContent="Bearbeiten";
+ edit.onclick=()=>openEdit(x);
+ actions.appendChild(edit);
+ left.append(h,meta,why,actions);
+ const loc=document.createElement("div");loc.className="loc";loc.textContent=locationText(x)||"–";
+ d.append(left,loc);return d;
 }
+
+function openEdit(x){
+ editing=x;
+ $("editTitle").value=x.title||"";
+ $("editActors").value=(x.actors||[]).join(", ");
+ $("editDirectors").value=(x.directors||[]).join(", ");
+ $("editMedium").value=["DVD","Blu-ray","4K UHD","Sonstiges"].includes(x.medium)?x.medium:(x.medium?"Sonstiges":"");
+ $("editArea").value=x.area||"";
+ $("editShelf").value=x.shelf||"";
+ $("editCompartment").value=x.compartment||"";
+ $("editPosition").value=x.position||"";
+ $("editError").classList.add("hidden");
+ $("editOverlay").classList.remove("hidden");
+}
+
+function closeEdit(){
+ editing=null;
+ $("editOverlay").classList.add("hidden");
+}
+
+function csvToArray(text){
+ return String(text||"").split(",").map(x=>x.trim()).filter(Boolean);
+}
+
+async function saveEdit(){
+ if(!db||!editing)return;
+ $("editError").classList.add("hidden");
+
+ const titleUpdate={
+  title:$("editTitle").value.trim()||editing.title,
+  actors:csvToArray($("editActors").value),
+  directors:csvToArray($("editDirectors").value)
+ };
+
+ const editionUpdate={
+  medium:$("editMedium").value||null,
+  area:$("editArea").value.trim()||null,
+  shelf:$("editShelf").value.trim()||null,
+  compartment:$("editCompartment").value.trim()||null,
+  position:$("editPosition").value?parseInt($("editPosition").value,10):null
+ };
+
+ const t=await db.from("titles").update(titleUpdate).eq("id",editing.title_id);
+ if(t.error){
+  $("editError").textContent="Filmdaten: "+t.error.message;
+  $("editError").classList.remove("hidden");return;
+ }
+
+ const e=await db.from("editions").update(editionUpdate).eq("id",editing.edition_id);
+ if(e.error){
+  $("editError").textContent="Ausgabe/Standort: "+e.error.message;
+  $("editError").classList.remove("hidden");return;
+ }
+
+ closeEdit();
+ await loadCatalog();
+ renderSearch();
+}
+
+async function deleteEdition(){
+ if(!db||!editing)return;
+ const label=`${editing.title} (${editing.medium||"Ausgabe"})`;
+ if(!confirm(`"${label}" wirklich aus der Sammlung löschen?`))return;
+
+ const titleId=editing.title_id;
+ const del=await db.from("editions").delete().eq("id",editing.edition_id);
+ if(del.error){
+  $("editError").textContent="Löschen fehlgeschlagen: "+del.error.message;
+  $("editError").classList.remove("hidden");return;
+ }
+
+ // Wenn keine weitere physische Ausgabe dieses Titels existiert,
+ // wird auch der verwaiste Titel-Datensatz entfernt.
+ const rem=await db.from("editions").select("id").eq("title_id",titleId).limit(1);
+ if(!rem.error && (!rem.data || rem.data.length===0)){
+   await db.from("titles").delete().eq("id",titleId);
+ }
+
+ closeEdit();
+ await loadCatalog();
+ renderSearch();
+}
+
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 
 $("refreshReport").onclick=()=>loadCatalog().then(renderReports);
@@ -363,6 +457,12 @@ function renderBars(id,items){
  el.innerHTML=items.slice(0,20).map(([l,v])=>`<div class="barrow"><span>${esc(l)}</span><div class="bar"><span style="width:${Math.round(v/max*100)}%"></span></div><strong>${v}</strong></div>`).join("");
 }
 $("next").onclick=()=>{$("result").classList.add("hidden");status("Bereit")};
+
+$("closeEdit").onclick=closeEdit;
+$("saveEdit").onclick=saveEdit;
+$("deleteEdition").onclick=deleteEdition;
+$("editOverlay").addEventListener("click",e=>{if(e.target===$("editOverlay"))closeEdit()});
+
 init();
 
 $("testSupabase").onclick=runSupabaseDiagnostic;
