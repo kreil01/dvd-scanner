@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827">
-<title>DVD-Katalog v0.4</title>
+<title>DVD-Katalog v0.4.1</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -12,7 +12,7 @@
 <body>
 <main class="app">
 <header>
-  <div><h1>Meine Filmsammlung <span>v0.4</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
+  <div><h1>Meine Filmsammlung <span>v0.4.1</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
   <div id="status" class="pill">Bereit</div>
 </header>
 
@@ -86,18 +86,6 @@
 </section>
 
 
-<div class="card">
-  <h2>Supabase-Diagnose</h2>
-  <p class="muted">Dieser Test liest nur Daten und verändert nichts.</p>
-  <button id="testSupabase" class="secondary full">Supabase-Verbindung testen</button>
-  <div class="diag-grid">
-    <div><strong>Geladene Project URL</strong><pre id="diagSupabaseUrl">–</pre></div>
-    <div><strong>Key-Info</strong><pre id="diagSupabaseKey">–</pre></div>
-    <div><strong>Test</strong><pre id="diagSupabaseTest">–</pre></div>
-    <div><strong>Antwort / Fehler</strong><pre id="diagSupabaseResponse">–</pre></div>
-  </div>
-</div>
-
 
 <div id="editOverlay" class="overlay hidden">
   <div class="modal">
@@ -143,7 +131,20 @@
 </div>
 
 <div class="card compact">
-  <details><summary>Technischer Status</summary><p id="tech"></p></details>
+  <details>
+    <summary>Technischer Status</summary>
+    <p id="tech"></p>
+
+    <h3>Supabase-Diagnose</h3>
+    <p class="muted">Dieser Test liest nur Daten und verändert nichts.</p>
+    <button id="testSupabase" class="secondary full">Supabase-Verbindung testen</button>
+    <div class="diag-grid">
+      <div><strong>Geladene Project URL</strong><pre id="diagSupabaseUrl">–</pre></div>
+      <div><strong>Key-Info</strong><pre id="diagSupabaseKey">–</pre></div>
+      <div><strong>Test</strong><pre id="diagSupabaseTest">–</pre></div>
+      <div><strong>Antwort / Fehler</strong><pre id="diagSupabaseResponse">–</pre></div>
+    </div>
+  </details>
 </div>
 </main>
 <script src="config.js"></script>

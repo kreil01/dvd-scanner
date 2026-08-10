@@ -1,3 +1,5 @@
+// DVD-Katalog v0.4.1 – app.js
+// Änderungen ggü. v0.4: getPosition() NULL-Fix, safeRender() für Sammlung/Reporting
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null;
 
 window.addEventListener("error", e=>{
@@ -93,9 +95,20 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
  $("scanPanel").classList.toggle("hidden",n!=="scan");
  $("collectionPanel").classList.toggle("hidden",n!=="collection");
  $("reportingPanel").classList.toggle("hidden",n!=="reporting");
- if(n==="collection")loadCatalog().then(renderSearch);
- if(n==="reporting")loadCatalog().then(renderReports);
+ if(n==="collection")loadCatalog().then(safeRender(renderSearch,"Sammlung"));
+ if(n==="reporting")loadCatalog().then(safeRender(renderReports,"Reporting"));
 });
+
+function safeRender(fn,label){
+ return function(){
+  try{ fn(); }
+  catch(e){
+   console.error(`Fehler in ${label}:`,e);
+   const tech=$("tech");
+   if(tech) tech.textContent=`Fehler im Bereich "${label}": ${e?.message||e}`;
+  }
+ };
+}
 
 function decodeAttempt(src, config){
   return new Promise((resolve)=>{
@@ -299,8 +312,13 @@ async function saveAll(ean,d){
 async function getPosition(){
  if($("position").value)return parseInt($("position").value,10);
  if(!db)return null;
- let q=db.from("editions").select("position").eq("area",$("area").value.trim()).eq("shelf",$("shelf").value.trim()).eq("compartment",$("compartment").value.trim()).order("position",{ascending:false}).limit(1);
- const {data}=await q;return (data?.[0]?.position||0)+1;
+ const area=$("area").value.trim(),shelf=$("shelf").value.trim(),compartment=$("compartment").value.trim();
+ let q=db.from("editions").select("position");
+ q=area?q.eq("area",area):q.is("area",null);
+ q=shelf?q.eq("shelf",shelf):q.is("shelf",null);
+ q=compartment?q.eq("compartment",compartment):q.is("compartment",null);
+ const {data}=await q.order("position",{ascending:false}).limit(1);
+ return (data?.[0]?.position||0)+1;
 }
 async function loadCatalog(){
  if(!db){catalog=[];return}
@@ -310,7 +328,7 @@ async function loadCatalog(){
 }
 function locationText(x){return [x.area,x.shelf,x.compartment,x.position?`Pos. ${x.position}`:null].filter(Boolean).join(" · ")}
 
-$("search").oninput=renderSearch;$("refresh").onclick=()=>loadCatalog().then(renderSearch);
+$("search").oninput=safeRender(renderSearch,"Sammlung");$("refresh").onclick=()=>loadCatalog().then(safeRender(renderSearch,"Sammlung"));
 function renderSearch(){
  const q=$("search").value.trim().toLowerCase();$("groups").innerHTML="";
  if(!q){$("searchSummary").textContent="Suchbegriff eingeben.";return}
@@ -434,7 +452,7 @@ async function deleteEdition(){
 
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 
-$("refreshReport").onclick=()=>loadCatalog().then(renderReports);
+$("refreshReport").onclick=()=>loadCatalog().then(safeRender(renderReports,"Reporting"));
 function renderReports(){
  const editions=catalog.length, titleMap=new Map();catalog.forEach(x=>titleMap.set(x.title_id,x));const titles=[...titleMap.values()];
  const movies=titles.filter(x=>x.tmdb_type==="movie").length,series=titles.filter(x=>x.tmdb_type==="tv").length;
