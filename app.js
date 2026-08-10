@@ -5,10 +5,76 @@ window.addEventListener("error", e=>{
   if(tech) tech.textContent="JavaScript-Fehler: "+(e.message||"unbekannt");
 });
 
+function maskKeyInfo(key){
+  const k=String(key||"");
+  if(!k) return "(leer)";
+  const type = k.startsWith("sb_publishable_") ? "Publishable key"
+             : k.startsWith("eyJ") ? "Legacy anon/JWT key"
+             : k.startsWith("sb_secret_") ? "SECRET KEY – nicht für Browser verwenden!"
+             : k.startsWith("service_role") ? "service_role – nicht für Browser verwenden!"
+             : "Unbekannter Key-Typ";
+  const preview = k.length > 14 ? `${k.slice(0,8)}…${k.slice(-6)}` : k;
+  return `${type}\n${preview}\nLänge: ${k.length}`;
+}
+
+async function runSupabaseDiagnostic(){
+  const u = String(window.SUPABASE_URL || "").trim();
+  const k = String(window.SUPABASE_ANON_KEY || "").trim();
+
+  $("diagSupabaseUrl").textContent = u || "(leer)";
+  $("diagSupabaseKey").textContent = maskKeyInfo(k);
+  $("diagSupabaseTest").textContent = "Initialisierung …";
+  $("diagSupabaseResponse").textContent = "–";
+
+  if(!u || !k){
+    $("diagSupabaseTest").textContent = "Abbruch";
+    $("diagSupabaseResponse").textContent = "SUPABASE_URL oder SUPABASE_ANON_KEY ist leer.";
+    return;
+  }
+
+  let testClient;
+  try{
+    testClient = window.supabase.createClient(u, k);
+  }catch(e){
+    $("diagSupabaseTest").textContent = "createClient fehlgeschlagen";
+    $("diagSupabaseResponse").textContent = String(e?.message || e);
+    return;
+  }
+
+  $("diagSupabaseTest").textContent = 'SELECT id,title FROM public.titles LIMIT 1';
+
+  try{
+    const res = await testClient.from("titles").select("id,title").limit(1);
+
+    const out = {
+      data: res.data ?? null,
+      error: res.error ? {
+        code: res.error.code ?? null,
+        message: res.error.message ?? null,
+        details: res.error.details ?? null,
+        hint: res.error.hint ?? null
+      } : null,
+      status: res.status ?? null,
+      statusText: res.statusText ?? null
+    };
+
+    $("diagSupabaseResponse").textContent = JSON.stringify(out, null, 2);
+
+    if(res.error){
+      $("diagSupabaseTest").textContent = "SELECT fehlgeschlagen";
+    }else{
+      $("diagSupabaseTest").textContent = "SELECT erfolgreich";
+    }
+  }catch(e){
+    $("diagSupabaseTest").textContent = "Request-Ausnahme";
+    $("diagSupabaseResponse").textContent = String(e?.stack || e?.message || e);
+  }
+}
+
 function init(){
  const u=String(window.SUPABASE_URL||""),k=String(window.SUPABASE_ANON_KEY||"");
  if(!u||!k||u.includes("HIER_")||k.includes("HIER_")){$("tech").textContent="Worker konfiguriert; Supabase v0.3 noch nicht eingerichtet.";return}
- db=window.supabase.createClient(u,k);$("tech").textContent="Worker und Supabase v0.3 konfiguriert.";
+ db=window.supabase.createClient(u,k);$("tech").textContent="Worker und Supabase konfiguriert. Project URL: "+u;
 }
 function status(t){$("status").textContent=t}
 function formatDbError(stage,error){
@@ -298,3 +364,5 @@ function renderBars(id,items){
 }
 $("next").onclick=()=>{$("result").classList.add("hidden");status("Bereit")};
 init();
+
+$("testSupabase").onclick=runSupabaseDiagnostic;
