@@ -4,16 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827">
-<title>DVD-Katalog v0.4.1</title>
+<title>DVD-Katalog v0.5</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<main class="app">
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h1>Meine Filmsammlung <span>v0.5</span></h1>
+    <p class="muted">Bitte anmelden, um auf die Sammlung zuzugreifen.</p>
+    <label>E-Mail<input id="loginEmail" type="email" autocomplete="username"></label>
+    <label>Passwort<input id="loginPassword" type="password" autocomplete="current-password"></label>
+    <button id="loginSubmit" class="primary full">Anmelden</button>
+    <div id="loginError" class="error hidden"></div>
+    <div id="loginInfo" class="muted" style="margin-top:10px">
+      Noch keinen Zugang? Der Nutzer wird im Supabase-Dashboard unter
+      <strong>Authentication → Users</strong> angelegt (siehe README).
+    </div>
+  </div>
+</div>
+
+<main class="app hidden" id="appMain">
 <header>
-  <div><h1>Meine Filmsammlung <span>v0.4.1</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
-  <div id="status" class="pill">Bereit</div>
+  <div><h1>Meine Filmsammlung <span>v0.5</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
+  <div class="row" style="gap:8px;align-items:center">
+    <div id="userEmail" class="pill"></div>
+    <div id="status" class="pill">Bereit</div>
+    <button id="logout" class="secondary">Abmelden</button>
+  </div>
 </header>
 
 <nav class="tabs">

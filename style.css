@@ -17,3 +17,9 @@
 .modal textarea,.modal select{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:10px;font:inherit;margin-top:5px}
 .edit-actions{display:flex;gap:10px;margin-top:20px}.edit-actions button{flex:1}
 .danger{background:#b91c1c;color:white}
+
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:#f3f4f6}
+.login-card{background:#fff;border-radius:16px;padding:24px;max-width:380px;width:100%;box-shadow:0 3px 16px #0000000d}
+.login-card h1{margin:0 0 4px;font-size:1.4rem}
+.login-card label{display:block;font-weight:700;margin-top:12px}
+.secondary{background:#e5e7eb;color:#111827}

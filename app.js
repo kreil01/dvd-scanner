@@ -1,5 +1,5 @@
-// DVD-Katalog v0.4.1 – app.js
-// Änderungen ggü. v0.4: getPosition() NULL-Fix, safeRender() für Sammlung/Reporting
+// DVD-Katalog v0.5 – app.js
+// Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null;
 
 window.addEventListener("error", e=>{
@@ -78,6 +78,53 @@ function init(){
  if(!u||!k||u.includes("HIER_")||k.includes("HIER_")){$("tech").textContent="Worker konfiguriert; Supabase v0.3 noch nicht eingerichtet.";return}
  db=window.supabase.createClient(u,k);$("tech").textContent="Worker und Supabase konfiguriert. Project URL: "+u;
 }
+
+function showApp(session){
+ $("loginScreen").classList.add("hidden");
+ $("appMain").classList.remove("hidden");
+ $("userEmail").textContent=session?.user?.email||"";
+}
+function showLogin(){
+ $("appMain").classList.add("hidden");
+ $("loginScreen").classList.remove("hidden");
+}
+async function initAuthGate(){
+ if(!db){
+  $("loginInfo").textContent="Supabase ist noch nicht konfiguriert (config.js) – Anmeldung nicht möglich.";
+  showLogin();
+  return;
+ }
+ try{
+  const {data:{session}}=await db.auth.getSession();
+  if(session)showApp(session);else showLogin();
+  db.auth.onAuthStateChange((_event,session)=>{
+   if(session)showApp(session);else showLogin();
+  });
+ }catch(e){
+  $("loginError").textContent="Fehler beim Prüfen der Anmeldung: "+(e?.message||e);
+  $("loginError").classList.remove("hidden");
+  showLogin();
+ }
+}
+async function doLogin(){
+ $("loginError").classList.add("hidden");
+ const email=$("loginEmail").value.trim(),password=$("loginPassword").value;
+ if(!db){$("loginError").textContent="Supabase ist nicht konfiguriert.";$("loginError").classList.remove("hidden");return}
+ if(!email||!password){$("loginError").textContent="Bitte E-Mail und Passwort eingeben.";$("loginError").classList.remove("hidden");return}
+ $("loginSubmit").disabled=true;$("loginSubmit").textContent="Anmelden …";
+ const {error}=await db.auth.signInWithPassword({email,password});
+ $("loginSubmit").disabled=false;$("loginSubmit").textContent="Anmelden";
+ if(error){
+  $("loginError").textContent=error.message||"Anmeldung fehlgeschlagen.";
+  $("loginError").classList.remove("hidden");
+ }else{
+  $("loginPassword").value="";
+ }
+}
+$("loginSubmit").onclick=doLogin;
+$("loginPassword").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin()});
+$("logout").onclick=async()=>{if(db)await db.auth.signOut();};
+
 function status(t){$("status").textContent=t}
 function formatDbError(stage,error){
  const obj={
@@ -482,5 +529,6 @@ $("deleteEdition").onclick=deleteEdition;
 $("editOverlay").addEventListener("click",e=>{if(e.target===$("editOverlay"))closeEdit()});
 
 init();
+initAuthGate();
 
 $("testSupabase").onclick=runSupabaseDiagnostic;
