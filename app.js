@@ -1,4 +1,4 @@
-// DVD-Katalog v0.5 – app.js
+// DVD-Katalog v0.6 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null;
 
@@ -378,7 +378,12 @@ function locationText(x){return [x.area,x.shelf,x.compartment,x.position?`Pos. $
 $("search").oninput=safeRender(renderSearch,"Sammlung");$("refresh").onclick=()=>loadCatalog().then(safeRender(renderSearch,"Sammlung"));
 function renderSearch(){
  const q=$("search").value.trim().toLowerCase();$("groups").innerHTML="";
- if(!q){$("searchSummary").textContent="Suchbegriff eingeben.";return}
+ if(!q){
+   $("searchSummary").textContent=`${catalog.length} Medien in der Sammlung`;
+   const g=document.createElement("div");g.className="group";g.innerHTML=`<h3><span>Alle Medien</span><span>${catalog.length}</span></h3>`;
+   catalog.forEach(x=>g.appendChild(movieCard(x,"Sammlung")));$("groups").appendChild(g);
+   return;
+ }
  const specs=[
   ["Titel",x=>[x.title,x.original_title]],
   ["Schauspieler",x=>x.actors||[]],
@@ -401,20 +406,22 @@ function renderSearch(){
 }
 function movieCard(x,reason){
  const d=document.createElement("div");d.className="movie";
+ let cover;
+ if(x.poster_url){cover=document.createElement("img");cover.className="movie-cover";cover.src=x.poster_url;cover.alt=`Cover ${x.title||"Film"}`;cover.loading="lazy"}
+ else{cover=document.createElement("div");cover.className="movie-cover-placeholder";cover.textContent="▶"}
  const left=document.createElement("div");
  const h=document.createElement("h4");h.textContent=x.title||"(ohne Titel)";
+ if(x.medium){const badge=document.createElement("span");badge.className="medium-badge";badge.textContent=x.medium;h.appendChild(badge)}
  const meta=document.createElement("div");meta.className="muted";
- meta.textContent=[x.release_year,x.genres?.join(", "),x.medium].filter(Boolean).join(" · ");
- const why=document.createElement("div");why.className="muted";why.textContent=`Treffer: ${reason}`;
+ meta.textContent=[x.release_year,x.genres?.join(", ")].filter(Boolean).join(" · ");
+ const why=document.createElement("div");why.className="muted";why.textContent=reason==="Sammlung"?([x.directors?.[0]?`Regie: ${x.directors[0]}`:null,x.fsk?`FSK ${x.fsk}`:null].filter(Boolean).join(" · ")):`Treffer: ${reason}`;
  const actions=document.createElement("div");actions.className="movie-actions";
  const edit=document.createElement("button");edit.className="secondary smallbtn";edit.textContent="Bearbeiten";
- edit.onclick=()=>openEdit(x);
- actions.appendChild(edit);
+ edit.onclick=()=>openEdit(x);actions.appendChild(edit);
  left.append(h,meta,why,actions);
  const loc=document.createElement("div");loc.className="loc";loc.textContent=locationText(x)||"–";
- d.append(left,loc);return d;
+ d.append(cover,left,loc);return d;
 }
-
 function openEdit(x){
  editing=x;
  $("editTitle").value=x.title||"";

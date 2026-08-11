@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827">
-<title>DVD-Katalog v0.5</title>
+<meta name="theme-color" content="#0F172A">
+<title>DVD-Katalog v0.6</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -13,159 +13,176 @@
 
 <div id="loginScreen" class="login-screen">
   <div class="login-card">
-    <h1>Meine Filmsammlung <span>v0.5</span></h1>
-    <p class="muted">Bitte anmelden, um auf die Sammlung zuzugreifen.</p>
-    <label>E-Mail<input id="loginEmail" type="email" autocomplete="username"></label>
-    <label>Passwort<input id="loginPassword" type="password" autocomplete="current-password"></label>
+    <div class="brand brand-login">
+      <div class="brand-mark">▶</div>
+      <div><strong>Meine Filmsammlung</strong><span>DVD-Katalog · v0.6</span></div>
+    </div>
+    <h1>Willkommen zurück</h1>
+    <p class="muted">Melde dich an, um deine Filmsammlung zu öffnen.</p>
+    <label>E-Mail<input id="loginEmail" type="email" autocomplete="username" placeholder="name@beispiel.de"></label>
+    <label>Passwort<input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••"></label>
     <button id="loginSubmit" class="primary full">Anmelden</button>
     <div id="loginError" class="error hidden"></div>
-    <div id="loginInfo" class="muted" style="margin-top:10px">
-      Noch keinen Zugang? Der Nutzer wird im Supabase-Dashboard unter
-      <strong>Authentication → Users</strong> angelegt (siehe README).
+    <div id="loginInfo" class="login-note">
+      Der Zugang wird im Supabase-Dashboard unter <strong>Authentication → Users</strong> verwaltet.
     </div>
   </div>
 </div>
 
 <main class="app hidden" id="appMain">
-<header>
-  <div><h1>Meine Filmsammlung <span>v0.5</span></h1><p>Scannen · Katalogisieren · Suchen · Auswerten</p></div>
-  <div class="row" style="gap:8px;align-items:center">
-    <div id="userEmail" class="pill"></div>
-    <div id="status" class="pill">Bereit</div>
-    <button id="logout" class="secondary">Abmelden</button>
-  </div>
-</header>
-
-<nav class="tabs">
-  <button class="tab active" data-tab="scan">📸 Erfassen</button>
-  <button class="tab" data-tab="collection">🔎 Sammlung</button>
-  <button class="tab" data-tab="reporting">📊 Reporting</button>
-</nav>
-
-<section id="scanPanel" class="panel">
-  <div class="card">
-    <h2>Neue DVD / Blu-ray erfassen</h2>
-    <div class="location-grid">
-      <label>Bereich<input id="area" placeholder="z. B. Wohnzimmer"></label>
-      <label>Regal<input id="shelf" placeholder="z. B. Regal 2"></label>
-      <label>Fach<input id="compartment" placeholder="z. B. Fach 3"></label>
-      <label>Position<input id="position" type="number" min="1" placeholder="automatisch"></label>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">▶</div>
+      <div><strong>Meine Filmsammlung</strong><span>DVD-Katalog · v0.6</span></div>
     </div>
-    <p class="muted">Position bleibt leer, wenn sie automatisch hochgezählt werden soll.</p>
 
-    <label class="scanbtn" for="file">📸 DVD-Barcode fotografieren</label>
-    <input id="file" type="file" accept="image/*" capture="environment">
-    <div id="previewWrap" class="preview-wrap hidden"><img id="preview" alt="Barcode-Foto"></div>
-    <div id="scanStatus" class="muted"></div>
+    <nav class="tabs sidebar-nav" aria-label="Hauptnavigation">
+      <button class="tab active" data-tab="scan"><span class="nav-icon">▣</span><span>Erfassen</span></button>
+      <button class="tab" data-tab="collection"><span class="nav-icon">▦</span><span>Sammlung</span></button>
+      <button class="tab" data-tab="reporting"><span class="nav-icon">▥</span><span>Reporting</span></button>
+    </nav>
 
-    <div id="progress" class="info hidden">Foto wird ausgewertet …</div>
-    <div id="error" class="error hidden"></div>
-  </div>
-
-  <div id="result" class="card hidden">
-    <div class="row">
-      <div><small>EAN</small><div id="ean" class="ean"></div></div>
-      <div id="lookupState" class="pill"></div>
+    <div class="sidebar-foot">
+      <div class="sidebar-caption">ANGEMELDET</div>
+      <div id="userEmail" class="user-email"></div>
+      <button id="logout" class="ghost full">Abmelden</button>
     </div>
-    <div class="result-grid">
-      <img id="poster" class="poster hidden" alt="Cover">
+  </aside>
+
+  <section class="workspace">
+    <header class="topbar">
       <div>
-        <h2 id="title"></h2>
-        <p id="filmMeta"></p>
-        <p id="people"></p>
-        <p id="editionMeta"></p>
-        <p id="saveState"></p><pre id="saveError" class="save-error hidden"></pre>
+        <div class="eyebrow">FILMARCHIV</div>
+        <h1>Meine Filmsammlung</h1>
+        <p>Große Filme. Einfache Verwaltung.</p>
+      </div>
+      <div class="topbar-actions">
+        <div id="status" class="status-pill">Bereit</div>
+      </div>
+    </header>
+
+    <section id="scanPanel" class="panel">
+      <div class="page-heading">
+        <div><h2>Medium erfassen</h2><p>Barcode fotografieren, Daten automatisch ermitteln und speichern.</p></div>
+      </div>
+
+      <div class="scan-layout">
+        <div class="card location-card">
+          <div class="card-kicker">STANDORT</div>
+          <h3>Ablage festlegen</h3>
+          <div class="location-grid">
+            <label>Bereich<input id="area" placeholder="z. B. Wohnzimmer"></label>
+            <label>Regal<input id="shelf" placeholder="z. B. Regal 2"></label>
+            <label>Fach<input id="compartment" placeholder="z. B. Fach 3"></label>
+            <label>Position<input id="position" type="number" min="1" placeholder="automatisch"></label>
+          </div>
+          <p class="muted">Bleibt Position leer, wird sie innerhalb des Fachs automatisch fortgezählt.</p>
+        </div>
+
+        <div class="card scan-card">
+          <div class="scan-hero-icon">▥</div>
+          <div class="card-kicker">BARCODE-SCAN</div>
+          <h3>DVD oder Blu-ray fotografieren</h3>
+          <p class="muted">Barcode möglichst gerade, scharf und ohne Spiegelung aufnehmen.</p>
+          <label class="scanbtn" for="file"><span>▣</span> Kamera öffnen</label>
+          <input id="file" type="file" accept="image/*" capture="environment">
+          <div id="previewWrap" class="preview-wrap hidden"><img id="preview" alt="Barcode-Foto"></div>
+          <div id="scanStatus" class="scan-status"></div>
+          <div id="progress" class="info hidden">Foto wird ausgewertet …</div>
+          <div id="error" class="error hidden"></div>
+        </div>
+      </div>
+
+      <div id="result" class="card result-card hidden">
+        <div class="result-topline">
+          <div><div class="card-kicker">SCAN-ERGEBNIS</div><div class="ean" id="ean"></div></div>
+          <div id="lookupState" class="status-pill"></div>
+        </div>
+        <div class="result-grid">
+          <img id="poster" class="poster hidden" alt="Cover">
+          <div class="result-copy">
+            <h2 id="title"></h2>
+            <p id="filmMeta" class="film-meta"></p>
+            <p id="people"></p>
+            <p id="editionMeta"></p>
+            <p id="saveState" class="save-state"></p>
+            <pre id="saveError" class="save-error hidden"></pre>
+          </div>
+        </div>
+        <div id="duplicate" class="warn hidden"></div>
+        <button id="next" class="primary full">Nächste DVD erfassen</button>
+      </div>
+    </section>
+
+    <section id="collectionPanel" class="panel hidden">
+      <div class="page-heading row">
+        <div><h2>Sammlung</h2><p><strong id="count">0</strong> physische Ausgaben in deinem Filmarchiv.</p></div>
+        <button id="refresh" class="secondary">↻ Aktualisieren</button>
+      </div>
+      <div class="card collection-toolbar">
+        <div class="search-wrap"><span>⌕</span><input id="search" class="search" placeholder="Titel, Schauspieler, Regisseur, Genre, Jahr, FSK, EAN, Standort …"></div>
+        <div id="searchSummary" class="muted"></div>
+      </div>
+      <div id="groups"></div>
+    </section>
+
+    <section id="reportingPanel" class="panel hidden">
+      <div class="page-heading row">
+        <div><h2>Reporting</h2><p>Deine Sammlung in Zahlen.</p></div>
+        <button id="refreshReport" class="secondary">↻ Aktualisieren</button>
+      </div>
+      <div class="card"><div id="kpis" class="kpis"></div></div>
+      <div class="report-grid">
+        <div class="card"><div class="card-kicker">BESTAND</div><h3>Medien</h3><div id="mediaReport"></div></div>
+        <div class="card"><div class="card-kicker">INHALT</div><h3>Top Genres</h3><div id="genreReport"></div></div>
+        <div class="card"><div class="card-kicker">DUBLETTEN</div><h3>Doppelte Filme</h3><div id="duplicateReport"></div></div>
+        <div class="card"><div class="card-kicker">ABLAGE</div><h3>Standorte</h3><div id="locationReport"></div></div>
+      </div>
+    </section>
+
+    <div id="editOverlay" class="overlay hidden">
+      <div class="modal">
+        <div class="row modal-head">
+          <div><div class="card-kicker">MEDIUM VERWALTEN</div><h2>Eintrag bearbeiten</h2></div>
+          <button id="closeEdit" class="icon-button" aria-label="Schließen">×</button>
+        </div>
+        <h3>Filmdaten</h3>
+        <label>Titel<input id="editTitle"></label>
+        <label>Schauspieler <span class="muted">(durch Komma trennen)</span><textarea id="editActors" rows="3"></textarea></label>
+        <label>Regisseur <span class="muted">(durch Komma trennen)</span><textarea id="editDirectors" rows="2"></textarea></label>
+        <h3>Physische Ausgabe</h3>
+        <label>Medium
+          <select id="editMedium">
+            <option value="">– auswählen –</option><option>DVD</option><option>Blu-ray</option><option>4K UHD</option><option>Sonstiges</option>
+          </select>
+        </label>
+        <div class="location-grid">
+          <label>Bereich<input id="editArea"></label><label>Regal<input id="editShelf"></label>
+          <label>Fach<input id="editCompartment"></label><label>Position<input id="editPosition" type="number" min="1"></label>
+        </div>
+        <div id="editError" class="error hidden"></div>
+        <div class="edit-actions"><button id="saveEdit" class="primary">Änderungen speichern</button><button id="deleteEdition" class="danger">Ausgabe löschen</button></div>
       </div>
     </div>
-    <div id="duplicate" class="warn hidden"></div>
-    <button id="next" class="primary full">Nächste DVD</button>
-  </div>
-</section>
 
-<section id="collectionPanel" class="panel hidden">
-  <div class="card">
-    <div class="row">
-      <div><h2>Sammlung</h2><p><strong id="count">0</strong> physische Ausgaben</p></div>
-      <button id="refresh">Aktualisieren</button>
+    <div class="tech-card">
+      <details>
+        <summary>Technischer Status</summary>
+        <div class="tech-content">
+          <p id="tech"></p>
+          <h3>Supabase-Diagnose</h3>
+          <p class="muted">Dieser Test liest nur Daten und verändert nichts.</p>
+          <button id="testSupabase" class="secondary full">Supabase-Verbindung testen</button>
+          <div class="diag-grid">
+            <div><strong>Geladene Project URL</strong><pre id="diagSupabaseUrl">–</pre></div>
+            <div><strong>Key-Info</strong><pre id="diagSupabaseKey">–</pre></div>
+            <div><strong>Test</strong><pre id="diagSupabaseTest">–</pre></div>
+            <div><strong>Antwort / Fehler</strong><pre id="diagSupabaseResponse">–</pre></div>
+          </div>
+        </div>
+      </details>
     </div>
-    <input id="search" class="search" placeholder="Titel, Schauspieler, Regisseur, Genre, Jahr, FSK, EAN, Standort …">
-    <div id="searchSummary" class="muted"></div>
-    <div id="groups"></div>
-  </div>
-</section>
-
-<section id="reportingPanel" class="panel hidden">
-  <div class="card">
-    <div class="row"><div><h2>Reporting</h2><p>Aktueller Bestand</p></div><button id="refreshReport">Aktualisieren</button></div>
-    <div id="kpis" class="kpis"></div>
-  </div>
-  <div class="card"><h2>Medien</h2><div id="mediaReport"></div></div>
-  <div class="card"><h2>Genres</h2><div id="genreReport"></div></div>
-  <div class="card"><h2>Doppelte Filme</h2><div id="duplicateReport"></div></div>
-  <div class="card"><h2>Standorte</h2><div id="locationReport"></div></div>
-</section>
-
-
-
-<div id="editOverlay" class="overlay hidden">
-  <div class="modal">
-    <div class="row">
-      <h2>Eintrag bearbeiten</h2>
-      <button id="closeEdit" class="secondary">Schließen</button>
-    </div>
-
-    <h3>Filmdaten</h3>
-    <label>Titel<input id="editTitle"></label>
-    <label>Schauspieler <span class="muted">(durch Komma trennen)</span>
-      <textarea id="editActors" rows="3"></textarea>
-    </label>
-    <label>Regisseur <span class="muted">(durch Komma trennen)</span>
-      <textarea id="editDirectors" rows="2"></textarea>
-    </label>
-
-    <h3>Physische Ausgabe</h3>
-    <label>Medium
-      <select id="editMedium">
-        <option value="">– auswählen –</option>
-        <option>DVD</option>
-        <option>Blu-ray</option>
-        <option>4K UHD</option>
-        <option>Sonstiges</option>
-      </select>
-    </label>
-
-    <div class="location-grid">
-      <label>Bereich<input id="editArea"></label>
-      <label>Regal<input id="editShelf"></label>
-      <label>Fach<input id="editCompartment"></label>
-      <label>Position<input id="editPosition" type="number" min="1"></label>
-    </div>
-
-    <div id="editError" class="error hidden"></div>
-
-    <div class="edit-actions">
-      <button id="saveEdit" class="primary">Änderungen speichern</button>
-      <button id="deleteEdition" class="danger">Ausgabe löschen</button>
-    </div>
-  </div>
-</div>
-
-<div class="card compact">
-  <details>
-    <summary>Technischer Status</summary>
-    <p id="tech"></p>
-
-    <h3>Supabase-Diagnose</h3>
-    <p class="muted">Dieser Test liest nur Daten und verändert nichts.</p>
-    <button id="testSupabase" class="secondary full">Supabase-Verbindung testen</button>
-    <div class="diag-grid">
-      <div><strong>Geladene Project URL</strong><pre id="diagSupabaseUrl">–</pre></div>
-      <div><strong>Key-Info</strong><pre id="diagSupabaseKey">–</pre></div>
-      <div><strong>Test</strong><pre id="diagSupabaseTest">–</pre></div>
-      <div><strong>Antwort / Fehler</strong><pre id="diagSupabaseResponse">–</pre></div>
-    </div>
-  </details>
-</div>
+  </section>
 </main>
 <script src="config.js"></script>
 <script src="app.js"></script>
