@@ -1,6 +1,6 @@
-// DVD-Katalog v0.6.3 – app.js
+// DVD-Katalog v0.6.4 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
-const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null;
+const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null;
 
 window.addEventListener("error", e=>{
   const tech=document.getElementById("tech");
@@ -237,6 +237,7 @@ $("file").addEventListener("change", async event=>{
     status("Barcode erkannt");
     $("progress").classList.add("hidden");
 
+    lastScannedEan=decoded.code;
     await process(decoded.code);
 
   }catch(err){
@@ -415,24 +416,25 @@ function renderSearch(){
 }
 function movieCard(x,reason){
  const d=document.createElement("div");d.className="movie";
- let cover;
+ let poster;
  if(x.poster_url){
-   cover=document.createElement("img");cover.className="movie-cover";cover.src=x.poster_url;cover.alt=`Cover ${x.title||"Film"}`;cover.loading="lazy";
-   cover.onerror=()=>{const ph=document.createElement("div");ph.className="movie-cover-placeholder";ph.textContent="▶";cover.replaceWith(ph)};
- } else{cover=document.createElement("div");cover.className="movie-cover-placeholder";cover.textContent="▶"}
+   poster=document.createElement("img");poster.className="movie-poster";poster.src=x.poster_url;poster.alt=x.title||"Filmcover";poster.loading="lazy";
+   poster.onerror=()=>{const ph=document.createElement("div");ph.className="movie-poster placeholder";ph.textContent="◉";poster.replaceWith(ph)};
+ }else{poster=document.createElement("div");poster.className="movie-poster placeholder";poster.textContent="◉"}
  const left=document.createElement("div");
  const h=document.createElement("h4");h.textContent=x.title||"(ohne Titel)";
- if(x.medium){const badge=document.createElement("span");badge.className="medium-badge";badge.textContent=x.medium;h.appendChild(badge)}
  const meta=document.createElement("div");meta.className="muted";
- meta.textContent=[x.release_year,x.genres?.join(", ")].filter(Boolean).join(" · ");
- const why=document.createElement("div");why.className="muted";why.textContent=reason==="Sammlung"?([x.directors?.[0]?`Regie: ${x.directors[0]}`:null,x.fsk?`FSK ${x.fsk}`:null].filter(Boolean).join(" · ")):`Treffer: ${reason}`;
+ meta.innerHTML=(x.medium?`<span class="media-badge">${esc(x.medium)}</span>`:"")+[x.release_year,x.genres?.join(", ")].filter(Boolean).map(esc).join(" · ");
+ const people=document.createElement("div");people.className="muted";
+ people.textContent=[x.directors?.length?`Regie: ${x.directors.slice(0,2).join(", ")}`:"",x.fsk?`FSK ${x.fsk}`:""].filter(Boolean).join(" · ");
+ const why=document.createElement("div");why.className="muted";why.textContent=`Treffer: ${reason}`;
  const actions=document.createElement("div");actions.className="movie-actions";
- const edit=document.createElement("button");edit.className="secondary smallbtn";edit.textContent="Bearbeiten";
- edit.onclick=()=>openEdit(x);actions.appendChild(edit);
- left.append(h,meta,why,actions);
- const loc=document.createElement("div");loc.className="loc";loc.textContent=locationText(x)||"–";
- d.append(cover,left,loc);return d;
+ const edit=document.createElement("button");edit.className="secondary smallbtn";edit.textContent="Bearbeiten";edit.onclick=()=>openEdit(x);actions.appendChild(edit);
+ left.append(h,meta,people,why,actions);
+ const loc=document.createElement("div");loc.className="loc";loc.textContent=locationText(x)||"Kein Standort";
+ d.append(poster,left,loc);return d;
 }
+
 function openEdit(x){
  editing=x;
  $("editTitle").value=x.title||"";
@@ -545,6 +547,13 @@ $("closeEdit").onclick=closeEdit;
 $("saveEdit").onclick=saveEdit;
 $("deleteEdition").onclick=deleteEdition;
 $("editOverlay").addEventListener("click",e=>{if(e.target===$("editOverlay"))closeEdit()});
+
+
+async function refreshCurrentEanCache(){
+ if(!lastScannedEan){alert("Bitte zuerst eine EAN scannen.");return;}
+ try{const base=String(window.DVD_LOOKUP_WORKER_URL||"").replace(/\/+$/,"");const r=await fetch(`${base}/lookup?ean=${encodeURIComponent(lastScannedEan)}&refresh=1`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.message||d.error||`HTTP ${r.status}`);alert(d.found?`EAN ${lastScannedEan} wurde neu ermittelt: ${d.title||"(ohne Titel)"}`:`EAN ${lastScannedEan}: kein Produkt gefunden.`);}catch(e){alert("Neuermittlung fehlgeschlagen: "+(e?.message||String(e)));}
+}
+$("refreshEanCache").onclick=refreshCurrentEanCache;
 
 init();
 initAuthGate();
