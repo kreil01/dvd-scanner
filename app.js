@@ -272,7 +272,15 @@ function showLookup(d){
  $("filmMeta").textContent=[d.release_year,d.genres?.join(", "),d.runtime_minutes?d.runtime_minutes+" Min.":null,d.fsk?`FSK ${d.fsk}`:null].filter(Boolean).join(" · ");
  $("people").textContent=[d.directors?.length?`Regie: ${d.directors.join(", ")}`:null,d.actors?.length?`Darsteller: ${d.actors.slice(0,8).join(", ")}`:null].filter(Boolean).join(" | ");
  $("editionMeta").textContent=[d.medium,d.publisher,d.source].filter(Boolean).join(" · ");
- if(d.poster_url){$("poster").src=d.poster_url;$("poster").classList.remove("hidden")}else $("poster").classList.add("hidden");
+ if(d.poster_url){
+   $("poster").src=d.poster_url;
+   $("poster").classList.remove("hidden");
+   $("poster").onerror=()=>{$("poster").classList.add("hidden")};
+ }else $("poster").classList.add("hidden");
+ if(d.metadata_status){
+   const current=$("editionMeta").textContent;
+   $("editionMeta").textContent=[current,d.metadata_status,d.poster_source?`Bild: ${d.poster_source}`:null].filter(Boolean).join(" · ");
+ }
  $("lookupState").textContent="Gefunden";
 }
 function showExisting(x){
@@ -407,8 +415,10 @@ function renderSearch(){
 function movieCard(x,reason){
  const d=document.createElement("div");d.className="movie";
  let cover;
- if(x.poster_url){cover=document.createElement("img");cover.className="movie-cover";cover.src=x.poster_url;cover.alt=`Cover ${x.title||"Film"}`;cover.loading="lazy"}
- else{cover=document.createElement("div");cover.className="movie-cover-placeholder";cover.textContent="▶"}
+ if(x.poster_url){
+   cover=document.createElement("img");cover.className="movie-cover";cover.src=x.poster_url;cover.alt=`Cover ${x.title||"Film"}`;cover.loading="lazy";
+   cover.onerror=()=>{const ph=document.createElement("div");ph.className="movie-cover-placeholder";ph.textContent="▶";cover.replaceWith(ph)};
+ } else{cover=document.createElement("div");cover.className="movie-cover-placeholder";cover.textContent="▶"}
  const left=document.createElement("div");
  const h=document.createElement("h4");h.textContent=x.title||"(ohne Titel)";
  if(x.medium){const badge=document.createElement("span");badge.className="medium-badge";badge.textContent=x.medium;h.appendChild(badge)}
