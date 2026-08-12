@@ -1,4 +1,4 @@
-// DVD-Katalog v0.6 – app.js
+// DVD-Katalog v0.6.2 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null;
 
@@ -197,6 +197,19 @@ async function decodeBarcode(src){
   }
   return null;
 }
+
+
+const cameraButton=$("cameraButton");
+const cameraInput=$("file");
+
+cameraButton.addEventListener("click", ()=>{
+  $("error").classList.add("hidden");
+  $("scanStatus").textContent="Kamera wird geöffnet …";
+  status("Kamera öffnen");
+  // Muss direkt im User-Click ausgeführt werden, damit Mobilbrowser den
+  // nativen Kamera-/Dateidialog nicht blockieren.
+  cameraInput.click();
+});
 
 $("file").addEventListener("change", async event=>{
   const file=event.target.files?.[0];
@@ -549,3 +562,14 @@ init();
 initAuthGate();
 
 $("testSupabase").onclick=runSupabaseDiagnostic;
+
+window.addEventListener("focus", ()=>{
+  // Nur Hinweis zurücksetzen, falls der Kameradialog geschlossen wurde,
+  // ohne dass ein Foto ausgewählt wurde.
+  setTimeout(()=>{
+    if($("scanStatus")?.textContent==="Kamera wird geöffnet …"){
+      $("scanStatus").textContent="Bereit für Barcode-Foto.";
+      status("Bereit");
+    }
+  },350);
+});
