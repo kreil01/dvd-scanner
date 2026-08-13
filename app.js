@@ -1,4 +1,4 @@
-// DVD-Katalog v0.6.8 – app.js
+// DVD-Katalog v0.6.9 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null,pendingLookup=null;
 
@@ -425,7 +425,11 @@ async function findOrCreateTitleId(d,{showErrors=true}={}){
    if(showErrors){$("saveError").textContent=formatDbError("titles-select",lookup.error);$("saveError").classList.remove("hidden");}
    throw lookup.error;
   }
-  if(lookup.data?.[0]?.id)return lookup.data[0].id;
+  if(lookup.data?.[0]?.id){
+   const existingId=lookup.data[0].id;
+   try{await backfillTitleMissingFields(existingId,d)}catch(_){}
+   return existingId;
+  }
  }
 
  const row={
@@ -441,6 +445,36 @@ async function findOrCreateTitleId(d,{showErrors=true}={}){
   throw ins.error;
  }
  return ins.data.id;
+}
+
+async function backfillTitleMissingFields(titleId,d){
+ const q=await db.from("titles").select("*").eq("id",titleId).single();
+ if(q.error)throw q.error;
+ const current=q.data||{};
+ const patch={};
+
+ const emptyScalar=v=>v===null||v===undefined||String(v).trim()==="";
+ const emptyArray=v=>!Array.isArray(v)||v.length===0;
+
+ if(emptyScalar(current.original_title) && d.original_title)patch.original_title=d.original_title;
+ if(emptyScalar(current.release_year) && d.release_year)patch.release_year=d.release_year;
+ if(emptyArray(current.genres) && Array.isArray(d.genres) && d.genres.length)patch.genres=d.genres;
+ if(emptyArray(current.directors) && Array.isArray(d.directors) && d.directors.length)patch.directors=d.directors;
+ if(emptyArray(current.actors) && Array.isArray(d.actors) && d.actors.length)patch.actors=d.actors;
+ if(emptyScalar(current.runtime_minutes) && d.runtime_minutes)patch.runtime_minutes=d.runtime_minutes;
+ if(emptyScalar(current.fsk) && d.fsk)patch.fsk=d.fsk;
+ if(emptyArray(current.production_countries) && Array.isArray(d.production_countries) && d.production_countries.length)patch.production_countries=d.production_countries;
+ if(emptyScalar(current.poster_url) && d.poster_url)patch.poster_url=d.poster_url;
+
+ // TMDb-Identität nur ergänzen, wenn bislang keine existiert.
+ if(emptyScalar(current.tmdb_type) && d.tmdb_type)patch.tmdb_type=d.tmdb_type;
+ if(emptyScalar(current.tmdb_id) && d.tmdb_id)patch.tmdb_id=d.tmdb_id;
+
+ if(Object.keys(patch).length===0)return {updated:false,fields:[]};
+
+ const upd=await db.from("titles").update(patch).eq("id",titleId);
+ if(upd.error)throw upd.error;
+ return {updated:true,fields:Object.keys(patch)};
 }
 
 async function saveAll(ean,d){
@@ -926,15 +960,31 @@ async function refreshCurrentEanCache(){
    const edition=await findEdition(lastScannedEan);
    if(edition){
     const correctTitleId=await findOrCreateTitleId(d,{showErrors:false});
+
     if(correctTitleId!==edition.title_id){
-     const upd=await db.from("editions").update({title_id:correctTitleId,medium:d.medium||edition.medium||null,source:d.source||edition.source||null}).eq("id",edition.edition_id);
+     const upd=await db.from("editions").update({
+      title_id:correctTitleId,
+      medium:d.medium||edition.medium||null,
+      source:d.source||edition.source||null
+     }).eq("id",edition.edition_id);
+
      if(upd.error)throw upd.error;
+
+     const fill=await backfillTitleMissingFields(correctTitleId,d);
      msg+="\n\nGespeicherte EAN-Zuordnung wurde korrigiert.";
-    }else msg+="\n\nDie gespeicherte Zuordnung war bereits korrekt.";
+     if(fill.updated)msg+=`\nFehlende Metadaten ergänzt: ${fill.fields.join(", ")}.`;
+
+    }else{
+     const fill=await backfillTitleMissingFields(edition.title_id,d);
+     msg+="\n\nDie gespeicherte Zuordnung war bereits korrekt.";
+     if(fill.updated)msg+=`\nFehlende Metadaten ergänzt: ${fill.fields.join(", ")}.`;
+     else msg+="\nEs waren keine leeren Metadatenfelder zu ergänzen.";
+    }
    }
   }
 
   alert(msg);
+  await loadCatalog();
   await process(lastScannedEan);
  }catch(err){
   alert("Neuprüfung fehlgeschlagen: "+(err?.message||String(err)));
