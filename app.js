@@ -831,7 +831,7 @@ $("manualCoverFile").addEventListener("change",async e=>{
 async function uploadManualCover(ean){
  if(!manualCoverResizedBlob)return null;
  if(!db)throw new Error("Supabase ist nicht verbunden.");
- const path=`manual/${Date.now()}-${ean}.jpg`;
+ const path=`manual/${Date.now()}-${ean||"ohne-barcode"}.jpg`;
  const upload=await db.storage.from("covers").upload(path,manualCoverResizedBlob,{
   contentType:"image/jpeg",
   upsert:false,
@@ -960,13 +960,13 @@ async function saveManualFullEntry(){
   $("manualFullTitle").value.trim()===manualTmdbData.query_title
  ) ? manualTmdbData : null;
 
- if(!ean||!title||!medium){
-  $("manualFullError").textContent="Barcode, Titel und Medium sind Pflichtfelder.";
+ if(!title||!medium){
+  $("manualFullError").textContent="Titel und Medium sind Pflichtfelder.";
   $("manualFullError").classList.remove("hidden");
   return;
  }
- if(ean.length!==13||!isValidEan13(ean)){
-  $("manualFullError").textContent="Erfasster Barcode falsch oder wird nicht gefunden.";
+ if(ean && (ean.length!==13||!isValidEan13(ean))){
+  $("manualFullError").textContent="Der eingegebene Barcode ist keine gültige EAN-13. Barcode leer lassen oder einen gültigen Barcode eingeben.";
   $("manualFullError").classList.remove("hidden");
   return;
  }
@@ -980,8 +980,10 @@ async function saveManualFullEntry(){
  $("manualFullSubmit").textContent="Wird gespeichert …";
 
  try{
-  const duplicate=await findEdition(ean);
-  if(duplicate)throw new Error("Dieser Barcode ist bereits in der Sammlung gespeichert.");
+  if(ean){
+   const duplicate=await findEdition(ean);
+   if(duplicate)throw new Error("Dieser Barcode ist bereits in der Sammlung gespeichert.");
+  }
 
   const coverUrl=await uploadManualCover(ean);
   let titleRow=await findTitleByExactName(title);
@@ -1039,7 +1041,7 @@ async function saveManualFullEntry(){
 
   const pos=await getPosition();
   const editionInsert=await db.from("editions").insert({
-   ean,
+   ean:ean||null,
    title_id:titleId,
    medium,
    edition_name:null,
