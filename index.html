@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0F172A">
-<title>DVD-Katalog v0.6.6</title>
+<title>DVD-Katalog v0.6.7</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -15,7 +15,7 @@
   <div class="login-card">
     <div class="brand brand-login">
       <div class="brand-mark">▶</div>
-      <div><strong>Meine Filmsammlung</strong><span>DVD-Katalog · v0.6.1</span></div>
+      <div><strong>Meine Filmsammlung</strong><span>DVD-Katalog · v0.6.7</span></div>
     </div>
     <h1>Willkommen zurück</h1>
     <p class="muted">Melde dich an, um deine Filmsammlung zu öffnen.</p>
@@ -33,7 +33,7 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">▶</div>
-      <div><strong>Meine Filmsammlung</strong><span>DVD-Katalog · v0.6.1</span></div>
+      <div><strong>Meine Filmsammlung</strong><span>DVD-Katalog · v0.6.7</span></div>
     </div>
 
     <nav class="tabs sidebar-nav" aria-label="Hauptnavigation">
@@ -91,6 +91,71 @@
           <div id="scanStatus" class="scan-status"></div>
           <div id="progress" class="info hidden">Foto wird ausgewertet …</div>
           <div id="error" class="error hidden"></div>
+        </div>
+      </div>
+
+
+      <div class="manual-capture-grid">
+        <div class="card manual-barcode-card">
+          <div class="card-kicker">BARCODE MANUELL</div>
+          <h3>EAN-13 eingeben</h3>
+          <p class="muted">Alle 13 Ziffern müssen eingegeben werden. Danach werden Produkt- und Filmdaten wie beim Scan automatisch gesucht und gespeichert.</p>
+
+          <div id="manualEanDigits" class="ean-digits" aria-label="13-stelliger Barcode">
+            <input class="ean-digit" id="manualDigit1" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 1">
+            <input class="ean-digit" id="manualDigit2" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 2">
+            <input class="ean-digit" id="manualDigit3" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 3">
+            <input class="ean-digit" id="manualDigit4" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 4">
+            <input class="ean-digit" id="manualDigit5" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 5">
+            <input class="ean-digit" id="manualDigit6" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 6">
+            <input class="ean-digit" id="manualDigit7" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 7">
+            <input class="ean-digit" id="manualDigit8" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 8">
+            <input class="ean-digit" id="manualDigit9" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 9">
+            <input class="ean-digit" id="manualDigit10" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 10">
+            <input class="ean-digit" id="manualDigit11" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 11">
+            <input class="ean-digit" id="manualDigit12" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 12">
+            <input class="ean-digit" id="manualDigit13" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 13">
+          </div>
+
+          <button id="manualBarcodeSubmit" class="primary full" type="button" disabled>Barcode suchen &amp; speichern</button>
+          <div id="manualBarcodeError" class="error hidden"></div>
+        </div>
+
+        <div class="card manual-entry-card">
+          <div class="card-kicker">KOMPLETT MANUELL</div>
+          <h3>Film ohne Datenbanktreffer erfassen</h3>
+          <p class="muted">Pflichtfelder sind Barcode, Titel und Medium. Schauspieler und Genre sind optional.</p>
+
+          <div class="manual-form-grid">
+            <label>Barcode *<input id="manualFullBarcode" inputmode="numeric" maxlength="13" placeholder="13-stellige EAN"></label>
+            <label>Medium *
+              <select id="manualFullMedium">
+                <option value="">– auswählen –</option>
+                <option value="DVD">DVD</option>
+                <option value="Blu-ray">Blu-ray</option>
+                <option value="4K UHD">4K UHD</option>
+                <option value="Sonstiges">Sonstiges</option>
+              </select>
+            </label>
+            <label class="span-2">Titel *<input id="manualFullTitle" placeholder="Filmtitel"></label>
+            <label class="span-2">Schauspieler <span class="muted">(durch Komma trennen)</span>
+              <textarea id="manualFullActors" rows="2" placeholder="z. B. Tom Hanks, Meg Ryan"></textarea>
+            </label>
+            <label class="span-2">Genre <span class="muted">(durch Komma trennen)</span>
+              <input id="manualFullGenres" placeholder="z. B. Drama, Komödie">
+            </label>
+          </div>
+
+          <div class="manual-photo-box">
+            <label class="secondary photo-button" for="manualCoverFile">Cover fotografieren (optional)</label>
+            <input id="manualCoverFile" type="file" accept="image/*" capture="environment">
+            <div id="manualPhotoInfo" class="muted">Smartphone-Fotos werden vor dem Upload automatisch auf maximal 900 × 1350 px und als komprimiertes JPEG reduziert.</div>
+            <img id="manualCoverPreview" class="manual-cover-preview hidden" alt="Manuelles Cover">
+          </div>
+
+          <button id="manualFullSubmit" class="primary full" type="button">Film manuell speichern</button>
+          <div id="manualFullError" class="error hidden"></div>
+          <div id="manualFullSuccess" class="info hidden"></div>
         </div>
       </div>
 

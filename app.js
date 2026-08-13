@@ -1,4 +1,4 @@
-// DVD-Katalog v0.6.6 – app.js
+// DVD-Katalog v0.6.7 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null;
 
@@ -255,13 +255,31 @@ $("file").addEventListener("change", async event=>{
 
 async function process(ean){
  $("result").classList.remove("hidden");$("ean").textContent=ean;$("duplicate").classList.add("hidden");$("saveState").textContent="";$("saveError").classList.add("hidden");$("saveError").textContent="";$("lookupState").textContent="Prüfe …";
- if(db){const x=await findEdition(ean);if(x){showExisting(x);return}}
+ if(db){
+  const x=await findEdition(ean);
+  if(x){
+   showExisting(x);
+   return {found:true,existing:true,data:x};
+  }
+ }
  $("lookupState").textContent="Produktsuche …";
  const d=await lookup(ean);
- if(!d.found){$("title").textContent="Kein Produkt gefunden";$("filmMeta").textContent=d.message||"";$("people").textContent="";$("editionMeta").textContent="";$("lookupState").textContent="Offen";return}
+ if(!d.found){
+  $("title").textContent="Kein Produkt gefunden";
+  $("filmMeta").textContent=d.message||"";
+  $("people").textContent="";
+  $("editionMeta").textContent="";
+  $("lookupState").textContent="Offen";
+  return {found:false,data:d};
+ }
  showLookup(d);
- if(db){const saved=await saveAll(ean,d);$("saveState").textContent=saved?"✓ Film und Ausgabe gespeichert":"⚠ Speichern fehlgeschlagen – Details unten"}
- else $("saveState").textContent="⚠ Supabase noch nicht eingerichtet";
+ if(db){
+  const saved=await saveAll(ean,d);
+  $("saveState").textContent=saved?"✓ Film und Ausgabe gespeichert":"⚠ Speichern fehlgeschlagen – Details unten";
+  return {found:true,saved,data:d};
+ }
+ $("saveState").textContent="⚠ Supabase noch nicht eingerichtet";
+ return {found:true,saved:false,data:d};
 }
 
 async function lookup(ean){
@@ -541,6 +559,268 @@ function renderBars(id,items){
  const el=$(id);if(!items.length){el.innerHTML="<p>Keine Daten.</p>";return}const max=Math.max(...items.map(x=>x[1]));
  el.innerHTML=items.slice(0,20).map(([l,v])=>`<div class="barrow"><span>${esc(l)}</span><div class="bar"><span style="width:${Math.round(v/max*100)}%"></span></div><strong>${v}</strong></div>`).join("");
 }
+
+// ---------- v0.6.7: EAN-13 manuell ----------
+const manualDigits=[...document.querySelectorAll(".ean-digit")];
+let manualCoverOriginalFile=null;
+let manualCoverResizedBlob=null;
+
+function isValidEan13(ean){
+ if(!/^\d{13}$/.test(ean))return false;
+ const digits=ean.split("").map(Number);
+ let sum=0;
+ for(let i=0;i<12;i++)sum+=digits[i]*(i%2===0?1:3);
+ const check=(10-(sum%10))%10;
+ return check===digits[12];
+}
+
+function getManualEan(){
+ return manualDigits.map(x=>x.value).join("");
+}
+
+function updateManualBarcodeState(){
+ const ean=getManualEan();
+ $("manualBarcodeSubmit").disabled=ean.length!==13;
+ if(ean.length===13){
+  manualDigits.forEach(x=>x.classList.toggle("invalid-digit",!isValidEan13(ean)));
+ }else{
+  manualDigits.forEach(x=>x.classList.remove("invalid-digit"));
+ }
+}
+
+manualDigits.forEach((input,index)=>{
+ input.addEventListener("input",e=>{
+  input.value=input.value.replace(/\D/g,"").slice(-1);
+  if(input.value && index<manualDigits.length-1)manualDigits[index+1].focus();
+  updateManualBarcodeState();
+ });
+ input.addEventListener("keydown",e=>{
+  if(e.key==="Backspace"&&!input.value&&index>0){
+   manualDigits[index-1].focus();
+  }
+ });
+ input.addEventListener("paste",e=>{
+  const digits=(e.clipboardData?.getData("text")||"").replace(/\D/g,"").slice(0,13);
+  if(digits.length===13){
+   e.preventDefault();
+   manualDigits.forEach((x,i)=>x.value=digits[i]||"");
+   updateManualBarcodeState();
+   manualDigits[12].focus();
+  }
+ });
+});
+
+async function submitManualBarcode(){
+ const ean=getManualEan();
+ $("manualBarcodeError").classList.add("hidden");
+ if(ean.length!==13||!isValidEan13(ean)){
+  $("manualBarcodeError").textContent="Erfasster Barcode falsch oder wird nicht gefunden.";
+  $("manualBarcodeError").classList.remove("hidden");
+  return;
+ }
+ try{
+  lastScannedEan=ean;
+  status("Barcode wird gesucht");
+  const result=await process(ean);
+  if(!result?.found){
+   $("manualBarcodeError").textContent="Erfasster Barcode falsch oder wird nicht gefunden.";
+   $("manualBarcodeError").classList.remove("hidden");
+  }else{
+   $("result").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+ }catch(e){
+  $("manualBarcodeError").textContent="Erfasster Barcode falsch oder wird nicht gefunden.";
+  $("manualBarcodeError").classList.remove("hidden");
+ }
+}
+$("manualBarcodeSubmit").onclick=submitManualBarcode;
+
+// ---------- v0.6.7: komplette manuelle Erfassung ----------
+function loadImageElement(file){
+ return new Promise((resolve,reject)=>{
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};
+  img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Bild konnte nicht gelesen werden."))};
+  img.src=url;
+ });
+}
+
+async function resizeCoverImage(file,maxWidth=900,maxHeight=1350,quality=0.82){
+ const img=await loadImageElement(file);
+ const scale=Math.min(1,maxWidth/img.naturalWidth,maxHeight/img.naturalHeight);
+ const width=Math.max(1,Math.round(img.naturalWidth*scale));
+ const height=Math.max(1,Math.round(img.naturalHeight*scale));
+
+ const canvas=document.createElement("canvas");
+ canvas.width=width;canvas.height=height;
+ const ctx=canvas.getContext("2d");
+ ctx.drawImage(img,0,0,width,height);
+
+ const blob=await new Promise((resolve,reject)=>{
+  canvas.toBlob(b=>b?resolve(b):reject(new Error("Bild konnte nicht verkleinert werden.")),"image/jpeg",quality);
+ });
+ return {blob,width,height};
+}
+
+$("manualCoverFile").addEventListener("change",async e=>{
+ const file=e.target.files?.[0];
+ manualCoverOriginalFile=file||null;
+ manualCoverResizedBlob=null;
+ $("manualCoverPreview").classList.add("hidden");
+ if(!file){
+  $("manualPhotoInfo").textContent="Smartphone-Fotos werden vor dem Upload automatisch auf maximal 900 × 1350 px und als komprimiertes JPEG reduziert.";
+  return;
+ }
+ try{
+  $("manualPhotoInfo").textContent="Foto wird verkleinert …";
+  const resized=await resizeCoverImage(file);
+  manualCoverResizedBlob=resized.blob;
+  const url=URL.createObjectURL(resized.blob);
+  $("manualCoverPreview").src=url;
+  $("manualCoverPreview").classList.remove("hidden");
+  $("manualCoverPreview").onload=()=>URL.revokeObjectURL(url);
+  $("manualPhotoInfo").textContent=`Foto vorbereitet: ${resized.width} × ${resized.height}px · ${Math.max(1,Math.round(resized.blob.size/1024))} KB JPEG`;
+ }catch(err){
+  manualCoverOriginalFile=null;
+  manualCoverResizedBlob=null;
+  $("manualPhotoInfo").textContent="Foto konnte nicht verarbeitet werden: "+(err?.message||String(err));
+ }
+});
+
+async function uploadManualCover(ean){
+ if(!manualCoverResizedBlob)return null;
+ if(!db)throw new Error("Supabase ist nicht verbunden.");
+ const path=`manual/${Date.now()}-${ean}.jpg`;
+ const upload=await db.storage.from("covers").upload(path,manualCoverResizedBlob,{
+  contentType:"image/jpeg",
+  upsert:false,
+  cacheControl:"3600"
+ });
+ if(upload.error)throw new Error("Cover-Upload: "+upload.error.message);
+ const pub=db.storage.from("covers").getPublicUrl(path);
+ return pub.data?.publicUrl||null;
+}
+
+async function findTitleByExactName(title){
+ if(!db)return null;
+ const q=await db.from("titles").select("*").ilike("title",title).limit(1);
+ if(q.error)throw q.error;
+ return q.data?.[0]||null;
+}
+
+async function saveManualFullEntry(){
+ $("manualFullError").classList.add("hidden");
+ $("manualFullSuccess").classList.add("hidden");
+
+ const ean=$("manualFullBarcode").value.replace(/\D/g,"").trim();
+ const title=$("manualFullTitle").value.trim();
+ const medium=$("manualFullMedium").value;
+ const actors=csvToArray($("manualFullActors").value);
+ const genres=csvToArray($("manualFullGenres").value);
+
+ if(!ean||!title||!medium){
+  $("manualFullError").textContent="Barcode, Titel und Medium sind Pflichtfelder.";
+  $("manualFullError").classList.remove("hidden");
+  return;
+ }
+ if(ean.length!==13||!isValidEan13(ean)){
+  $("manualFullError").textContent="Erfasster Barcode falsch oder wird nicht gefunden.";
+  $("manualFullError").classList.remove("hidden");
+  return;
+ }
+ if(!db){
+  $("manualFullError").textContent="Supabase ist nicht verbunden – manuelles Speichern ist nicht möglich.";
+  $("manualFullError").classList.remove("hidden");
+  return;
+ }
+
+ $("manualFullSubmit").disabled=true;
+ $("manualFullSubmit").textContent="Wird gespeichert …";
+
+ try{
+  const duplicate=await findEdition(ean);
+  if(duplicate)throw new Error("Dieser Barcode ist bereits in der Sammlung gespeichert.");
+
+  const coverUrl=await uploadManualCover(ean);
+  let titleRow=await findTitleByExactName(title);
+  let titleId;
+
+  if(titleRow){
+   titleId=titleRow.id;
+
+   // Nur fehlende Felder ergänzen, vorhandene/manuelle Daten niemals überschreiben.
+   const patch={};
+   if((!titleRow.actors||titleRow.actors.length===0)&&actors.length)patch.actors=actors;
+   if((!titleRow.genres||titleRow.genres.length===0)&&genres.length)patch.genres=genres;
+   if(!titleRow.poster_url&&coverUrl)patch.poster_url=coverUrl;
+
+   if(Object.keys(patch).length){
+    const upd=await db.from("titles").update(patch).eq("id",titleId);
+    if(upd.error)throw upd.error;
+   }
+  }else{
+   const titleInsert=await db.from("titles").insert({
+    tmdb_type:null,
+    tmdb_id:null,
+    title,
+    original_title:null,
+    release_year:null,
+    genres,
+    directors:[],
+    actors,
+    runtime_minutes:null,
+    fsk:null,
+    production_countries:[],
+    poster_url:coverUrl
+   }).select("id").single();
+
+   if(titleInsert.error)throw titleInsert.error;
+   titleId=titleInsert.data.id;
+  }
+
+  const pos=await getPosition();
+  const editionInsert=await db.from("editions").insert({
+   ean,
+   title_id:titleId,
+   medium,
+   edition_name:null,
+   publisher:null,
+   languages:[],
+   area:$("area").value.trim()||null,
+   shelf:$("shelf").value.trim()||null,
+   compartment:$("compartment").value.trim()||null,
+   position:pos,
+   source:"Manuell"
+  });
+  if(editionInsert.error)throw editionInsert.error;
+
+  $("manualFullSuccess").textContent=`✓ ${title} wurde als ${medium} gespeichert.`;
+  $("manualFullSuccess").classList.remove("hidden");
+
+  $("manualFullBarcode").value="";
+  $("manualFullTitle").value="";
+  $("manualFullMedium").value="";
+  $("manualFullActors").value="";
+  $("manualFullGenres").value="";
+  $("manualCoverFile").value="";
+  $("manualCoverPreview").classList.add("hidden");
+  $("manualPhotoInfo").textContent="Smartphone-Fotos werden vor dem Upload automatisch auf maximal 900 × 1350 px und als komprimiertes JPEG reduziert.";
+  manualCoverOriginalFile=null;
+  manualCoverResizedBlob=null;
+
+  if(!$("position").value)$("position").placeholder=String((pos||0)+1);
+ }catch(err){
+  $("manualFullError").textContent=err?.message||String(err);
+  $("manualFullError").classList.remove("hidden");
+ }finally{
+  $("manualFullSubmit").disabled=false;
+  $("manualFullSubmit").textContent="Film manuell speichern";
+ }
+}
+$("manualFullSubmit").onclick=saveManualFullEntry;
+
+
 $("next").onclick=()=>{$("result").classList.add("hidden");status("Bereit")};
 
 $("closeEdit").onclick=closeEdit;
