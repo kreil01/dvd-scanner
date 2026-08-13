@@ -1,6 +1,6 @@
 // DVD-Katalog v0.6.11 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
-const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null,pendingLookup=null,manualTmdbData=null;
+const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null,pendingLookup=null,manualTmdbData=null,manualTmdbCandidates=[];
 
 window.addEventListener("error", e=>{
   const tech=document.getElementById("tech");
@@ -852,6 +852,7 @@ async function findTitleByExactName(title){
 
 function clearManualTmdbResult(){
  manualTmdbData=null;
+ manualTmdbCandidates=[];
  $("manualTmdbResult").classList.add("hidden");
  $("manualTmdbCandidates").innerHTML="";
  $("manualTmdbCount").textContent="–";
@@ -882,6 +883,7 @@ async function lookupManualTitleInTmdb(){
   if(!r.ok)throw new Error(d.message||d.error||`HTTP ${r.status}`);
 
   const candidates=d.candidates||[];
+  manualTmdbCandidates=candidates;
   if(!candidates.length){
    $("manualFullError").textContent="Keine TMDb-Kandidaten gefunden.";
    $("manualFullError").classList.remove("hidden");
@@ -927,11 +929,28 @@ async function selectManualTmdbCandidate(type,id){
   const r=await fetch(`${base}/tmdb-detail?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`,{cache:"no-store"});
   const d=await r.json();
   if(!r.ok||!d.found)throw new Error(d.message||d.error||`HTTP ${r.status}`);
+
+  const candidate=manualTmdbCandidates.find(c=>
+   String(c.tmdb_type)===String(type) && String(c.tmdb_id)===String(id)
+  )||null;
+
+  // Poster-Fallback:
+  // Die Suchantwort enthält häufig bereits ein Poster. Falls die Detailantwort
+  // kein poster_url liefert, bleibt das Poster des gewählten Kandidaten erhalten.
+  if(!d.poster_url && candidate?.poster_url)d.poster_url=candidate.poster_url;
+
   manualTmdbData=d;
 
-  $("manualFullTitle").value=d.title||$("manualFullTitle").value;
+  $("manualFullTitle").value=d.title||candidate?.title||$("manualFullTitle").value;
   if(!$("manualFullActors").value.trim()&&d.actors?.length)$("manualFullActors").value=d.actors.join(", ");
   if(!$("manualFullGenres").value.trim()&&d.genres?.length)$("manualFullGenres").value=d.genres.join(", ");
+
+  // TMDb-Poster als Vorschau anzeigen, solange kein eigenes Coverfoto gewählt wurde.
+  if(!manualCoverResizedBlob && d.poster_url){
+   $("manualCoverPreview").src=d.poster_url;
+   $("manualCoverPreview").classList.remove("hidden");
+   $("manualPhotoInfo").textContent="TMDb-Poster ausgewählt. Ein eigenes Coverfoto würde dieses beim Speichern ersetzen.";
+  }
 
   $("manualTmdbResult").classList.add("hidden");
   $("manualFullSuccess").textContent=`TMDb-Treffer „${d.title}“ ausgewählt. Metadaten werden beim Speichern übernommen.`;
@@ -1065,6 +1084,7 @@ async function saveManualFullEntry(){
   $("manualFullGenres").value="";
   $("manualCoverFile").value="";
   $("manualCoverPreview").classList.add("hidden");
+  $("manualCoverPreview").removeAttribute("src");
   $("manualPhotoInfo").textContent="Smartphone-Fotos werden vor dem Upload automatisch auf maximal 900 × 1350 px und als komprimiertes JPEG reduziert.";
   manualCoverOriginalFile=null;
   manualCoverResizedBlob=null;
