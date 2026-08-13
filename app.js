@@ -1,4 +1,4 @@
-// DVD-Katalog v0.6.4 – app.js
+// DVD-Katalog v0.6.6 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null;
 
@@ -549,9 +549,46 @@ $("deleteEdition").onclick=deleteEdition;
 $("editOverlay").addEventListener("click",e=>{if(e.target===$("editOverlay"))closeEdit()});
 
 
+async function getOrCreateTitleForLookup(d){
+ if(d.tmdb_id){
+  const q=await db.from("titles").select("id").eq("tmdb_type",d.tmdb_type).eq("tmdb_id",d.tmdb_id).limit(1);
+  if(q.error)throw q.error;
+  if(q.data?.[0]?.id)return q.data[0].id;
+ }
+ const row={tmdb_type:d.tmdb_type||null,tmdb_id:d.tmdb_id||null,title:d.title||"",original_title:d.original_title||null,release_year:d.release_year||null,genres:d.genres||[],directors:d.directors||[],actors:d.actors||[],runtime_minutes:d.runtime_minutes||null,fsk:d.fsk||null,production_countries:d.production_countries||[],poster_url:d.poster_url||null};
+ const ins=await db.from("titles").insert(row).select("id").single();
+ if(ins.error)throw ins.error;
+ return ins.data.id;
+}
+
 async function refreshCurrentEanCache(){
- if(!lastScannedEan){alert("Bitte zuerst eine EAN scannen.");return;}
- try{const base=String(window.DVD_LOOKUP_WORKER_URL||"").replace(/\/+$/,"");const r=await fetch(`${base}/lookup?ean=${encodeURIComponent(lastScannedEan)}&refresh=1`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.message||d.error||`HTTP ${r.status}`);alert(d.found?`EAN ${lastScannedEan} wurde neu ermittelt: ${d.title||"(ohne Titel)"}`:`EAN ${lastScannedEan}: kein Produkt gefunden.`);}catch(e){alert("Neuermittlung fehlgeschlagen: "+(e?.message||String(e)));}
+ if(!lastScannedEan){alert("Bitte zuerst die betroffene EAN scannen.");return}
+ try{
+  const base=String(window.DVD_LOOKUP_WORKER_URL||"").replace(/\/+$/,"");
+  const r=await fetch(`${base}/lookup?ean=${encodeURIComponent(lastScannedEan)}&refresh=1`,{cache:"no-store"});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.message||d.error||`HTTP ${r.status}`);
+  if(!d.found)throw new Error("Für diese EAN wurden keine Produktdaten gefunden.");
+
+  let msg=`Neu ermittelt: ${d.title||"(ohne Titel)"}`;
+
+  if(db){
+   const edition=await findEdition(lastScannedEan);
+   if(edition){
+    const correctTitleId=await getOrCreateTitleForLookup(d);
+    if(correctTitleId!==edition.title_id){
+     const upd=await db.from("editions").update({title_id:correctTitleId,medium:d.medium||edition.medium||null,source:d.source||edition.source||null}).eq("id",edition.edition_id);
+     if(upd.error)throw upd.error;
+     msg+="\n\nGespeicherte EAN-Zuordnung wurde korrigiert.";
+    }else msg+="\n\nDie gespeicherte Zuordnung war bereits korrekt.";
+   }
+  }
+
+  alert(msg);
+  await process(lastScannedEan);
+ }catch(err){
+  alert("Neuprüfung fehlgeschlagen: "+(err?.message||String(err)));
+ }
 }
 $("refreshEanCache").onclick=refreshCurrentEanCache;
 
