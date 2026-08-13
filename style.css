@@ -257,3 +257,13 @@ input,textarea,select{width:100%;background:#0c1728;color:var(--text);border:1px
   .review-form{grid-template-columns:1fr}
   .review-actions{flex-direction:column}
 }
+
+.manual-tmdb-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+  margin-top:12px;
+}
+@media(max-width:680px){
+  .manual-tmdb-actions{grid-template-columns:1fr}
+}

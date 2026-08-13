@@ -1,6 +1,6 @@
-// DVD-Katalog v0.6.10 – app.js
+// DVD-Katalog v0.6.11 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
-const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null,pendingLookup=null;
+const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null,pendingLookup=null,manualTmdbData=null;
 
 window.addEventListener("error", e=>{
   const tech=document.getElementById("tech");
@@ -738,6 +738,15 @@ manualDigits.forEach((input,index)=>{
  });
 });
 
+function clearManualBarcodeInputs(){
+ manualDigits.forEach(x=>{
+  x.value="";
+  x.classList.remove("invalid-digit");
+ });
+ $("manualBarcodeSubmit").disabled=true;
+ if(manualDigits[0])manualDigits[0].focus();
+}
+
 async function submitManualBarcode(){
  const ean=getManualEan();
  $("manualBarcodeError").classList.add("hidden");
@@ -754,6 +763,7 @@ async function submitManualBarcode(){
    $("manualBarcodeError").textContent="Erfasster Barcode falsch oder wird nicht gefunden.";
    $("manualBarcodeError").classList.remove("hidden");
   }else{
+   clearManualBarcodeInputs();
    $("result").scrollIntoView({behavior:"smooth",block:"start"});
   }
  }catch(e){
@@ -812,6 +822,8 @@ $("manualCoverFile").addEventListener("change",async e=>{
  }catch(err){
   manualCoverOriginalFile=null;
   manualCoverResizedBlob=null;
+  manualTmdbData=null;
+  clearManualTmdbResult();
   $("manualPhotoInfo").textContent="Foto konnte nicht verarbeitet werden: "+(err?.message||String(err));
  }
 });
@@ -837,6 +849,102 @@ async function findTitleByExactName(title){
  return q.data?.[0]||null;
 }
 
+
+function clearManualTmdbResult(){
+ manualTmdbData=null;
+ $("manualTmdbResult").classList.add("hidden");
+ $("manualTmdbTitle").textContent="–";
+ $("manualTmdbMeta").textContent="";
+ $("manualTmdbPeople").textContent="";
+ $("manualTmdbWarning").classList.add("hidden");
+}
+
+async function lookupManualTitleInTmdb(){
+ $("manualFullError").classList.add("hidden");
+ clearManualTmdbResult();
+
+ const title=$("manualFullTitle").value.trim();
+ const medium=$("manualFullMedium").value;
+
+ if(!title){
+  $("manualFullError").textContent="Für die TMDb-Suche muss mindestens ein Titel eingegeben werden.";
+  $("manualFullError").classList.remove("hidden");
+  return;
+ }
+
+ const btn=$("manualTmdbLookup");
+ btn.disabled=true;
+ btn.textContent="TMDb wird durchsucht …";
+
+ try{
+  const base=String(window.DVD_LOOKUP_WORKER_URL||"").replace(/\/+$/,"");
+  const r=await fetch(`${base}/tmdb-title?title=${encodeURIComponent(title)}`,{cache:"no-store"});
+  const d=await r.json();
+
+  if(!r.ok)throw new Error(d.message||d.error||`HTTP ${r.status}`);
+  if(!d.found){
+   $("manualFullError").textContent="Kein ausreichend sicherer TMDb-Treffer gefunden.";
+   $("manualFullError").classList.remove("hidden");
+   return;
+  }
+
+  manualTmdbData=d;
+
+  const conf=matchConfidence(d);
+  $("manualTmdbConfidence").textContent=conf.label;
+  $("manualTmdbConfidence").className=`confidence-badge confidence-${conf.level}`;
+  $("manualTmdbTitle").textContent=d.title||title;
+  $("manualTmdbMeta").textContent=[
+   d.release_year,
+   d.genres?.join(", "),
+   d.runtime_minutes?`${d.runtime_minutes} Min.`:"",
+   d.fsk?`FSK ${d.fsk}`:"",
+   medium||""
+  ].filter(Boolean).join(" · ");
+  $("manualTmdbPeople").textContent=[
+   d.directors?.length?`Regie: ${d.directors.join(", ")}`:"",
+   d.actors?.length?`Darsteller: ${d.actors.slice(0,8).join(", ")}`:""
+  ].filter(Boolean).join(" | ");
+
+  const warnings=[];
+  if(conf.level==="low")warnings.push("Die Zuordnung ist unsicher. Bitte Titel und Film prüfen.");
+  if(d.tmdb_query_part!==null && d.tmdb_candidate_part===null)warnings.push("Die Quelle enthält eine Teil-/Episodennummer, der TMDb-Titel nicht.");
+  $("manualTmdbWarning").textContent=warnings.join(" ");
+  $("manualTmdbWarning").classList.toggle("hidden",warnings.length===0);
+
+  $("manualTmdbResult").classList.remove("hidden");
+  $("manualTmdbResult").scrollIntoView({behavior:"smooth",block:"center"});
+
+ }catch(err){
+  $("manualFullError").textContent="TMDb-Suche fehlgeschlagen: "+(err?.message||String(err));
+  $("manualFullError").classList.remove("hidden");
+ }finally{
+  btn.disabled=false;
+  btn.textContent="In TMDb suchen";
+ }
+}
+
+function acceptManualTmdbData(){
+ if(!manualTmdbData)return;
+
+ $("manualFullTitle").value=manualTmdbData.title||$("manualFullTitle").value;
+
+ if((!$("manualFullActors").value.trim()) && manualTmdbData.actors?.length){
+  $("manualFullActors").value=manualTmdbData.actors.join(", ");
+ }
+ if((!$("manualFullGenres").value.trim()) && manualTmdbData.genres?.length){
+  $("manualFullGenres").value=manualTmdbData.genres.join(", ");
+ }
+
+ $("manualTmdbResult").classList.add("hidden");
+ $("manualFullSuccess").textContent="TMDb-Daten wurden übernommen. Bitte Eintrag prüfen und speichern.";
+ $("manualFullSuccess").classList.remove("hidden");
+}
+
+$("manualTmdbLookup").onclick=lookupManualTitleInTmdb;
+$("manualTmdbAccept").onclick=acceptManualTmdbData;
+$("manualTmdbReject").onclick=clearManualTmdbResult;
+
 async function saveManualFullEntry(){
  $("manualFullError").classList.add("hidden");
  $("manualFullSuccess").classList.add("hidden");
@@ -846,6 +954,11 @@ async function saveManualFullEntry(){
  const medium=$("manualFullMedium").value;
  const actors=csvToArray($("manualFullActors").value);
  const genres=csvToArray($("manualFullGenres").value);
+
+ const acceptedTmdb = manualTmdbData && (
+  $("manualFullTitle").value.trim()===manualTmdbData.title ||
+  $("manualFullTitle").value.trim()===manualTmdbData.query_title
+ ) ? manualTmdbData : null;
 
  if(!ean||!title||!medium){
   $("manualFullError").textContent="Barcode, Titel und Medium sind Pflichtfelder.";
@@ -879,9 +992,26 @@ async function saveManualFullEntry(){
 
    // Nur fehlende Felder ergänzen, vorhandene/manuelle Daten niemals überschreiben.
    const patch={};
-   if((!titleRow.actors||titleRow.actors.length===0)&&actors.length)patch.actors=actors;
-   if((!titleRow.genres||titleRow.genres.length===0)&&genres.length)patch.genres=genres;
-   if(!titleRow.poster_url&&coverUrl)patch.poster_url=coverUrl;
+   if((!titleRow.actors||titleRow.actors.length===0)){
+    if(actors.length)patch.actors=actors;
+    else if(acceptedTmdb?.actors?.length)patch.actors=acceptedTmdb.actors;
+   }
+   if((!titleRow.genres||titleRow.genres.length===0)){
+    if(genres.length)patch.genres=genres;
+    else if(acceptedTmdb?.genres?.length)patch.genres=acceptedTmdb.genres;
+   }
+   if(!titleRow.directors?.length && acceptedTmdb?.directors?.length)patch.directors=acceptedTmdb.directors;
+   if(!titleRow.original_title && acceptedTmdb?.original_title)patch.original_title=acceptedTmdb.original_title;
+   if(!titleRow.release_year && acceptedTmdb?.release_year)patch.release_year=acceptedTmdb.release_year;
+   if(!titleRow.runtime_minutes && acceptedTmdb?.runtime_minutes)patch.runtime_minutes=acceptedTmdb.runtime_minutes;
+   if(!titleRow.fsk && acceptedTmdb?.fsk)patch.fsk=acceptedTmdb.fsk;
+   if((!titleRow.production_countries||titleRow.production_countries.length===0)&&acceptedTmdb?.production_countries?.length)patch.production_countries=acceptedTmdb.production_countries;
+   if(!titleRow.tmdb_type && acceptedTmdb?.tmdb_type)patch.tmdb_type=acceptedTmdb.tmdb_type;
+   if(!titleRow.tmdb_id && acceptedTmdb?.tmdb_id)patch.tmdb_id=acceptedTmdb.tmdb_id;
+   if(!titleRow.poster_url){
+    if(coverUrl)patch.poster_url=coverUrl;
+    else if(acceptedTmdb?.poster_url)patch.poster_url=acceptedTmdb.poster_url;
+   }
 
    if(Object.keys(patch).length){
     const upd=await db.from("titles").update(patch).eq("id",titleId);
@@ -889,18 +1019,18 @@ async function saveManualFullEntry(){
    }
   }else{
    const titleInsert=await db.from("titles").insert({
-    tmdb_type:null,
-    tmdb_id:null,
+    tmdb_type:acceptedTmdb?.tmdb_type||null,
+    tmdb_id:acceptedTmdb?.tmdb_id||null,
     title,
-    original_title:null,
-    release_year:null,
-    genres,
-    directors:[],
-    actors,
-    runtime_minutes:null,
-    fsk:null,
-    production_countries:[],
-    poster_url:coverUrl
+    original_title:acceptedTmdb?.original_title||null,
+    release_year:acceptedTmdb?.release_year||null,
+    genres:genres.length?genres:(acceptedTmdb?.genres||[]),
+    directors:acceptedTmdb?.directors||[],
+    actors:actors.length?actors:(acceptedTmdb?.actors||[]),
+    runtime_minutes:acceptedTmdb?.runtime_minutes||null,
+    fsk:acceptedTmdb?.fsk||null,
+    production_countries:acceptedTmdb?.production_countries||[],
+    poster_url:coverUrl||acceptedTmdb?.poster_url||null
    }).select("id").single();
 
    if(titleInsert.error)throw titleInsert.error;
@@ -936,6 +1066,8 @@ async function saveManualFullEntry(){
   $("manualPhotoInfo").textContent="Smartphone-Fotos werden vor dem Upload automatisch auf maximal 900 × 1350 px und als komprimiertes JPEG reduziert.";
   manualCoverOriginalFile=null;
   manualCoverResizedBlob=null;
+  manualTmdbData=null;
+  clearManualTmdbResult();
 
   if(!$("position").value)$("position").placeholder=String((pos||0)+1);
  }catch(err){
