@@ -853,10 +853,12 @@ async function findTitleByExactName(title){
 function clearManualTmdbResult(){
  manualTmdbData=null;
  $("manualTmdbResult").classList.add("hidden");
- $("manualTmdbTitle").textContent="–";
- $("manualTmdbMeta").textContent="";
- $("manualTmdbPeople").textContent="";
- $("manualTmdbWarning").classList.add("hidden");
+ $("manualTmdbCandidates").innerHTML="";
+ $("manualTmdbCount").textContent="–";
+}
+
+function escHtml(s){
+ return String(s??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 }
 
 async function lookupManualTitleInTmdb(){
@@ -864,8 +866,6 @@ async function lookupManualTitleInTmdb(){
  clearManualTmdbResult();
 
  const title=$("manualFullTitle").value.trim();
- const medium=$("manualFullMedium").value;
-
  if(!title){
   $("manualFullError").textContent="Für die TMDb-Suche muss mindestens ein Titel eingegeben werden.";
   $("manualFullError").classList.remove("hidden");
@@ -873,76 +873,76 @@ async function lookupManualTitleInTmdb(){
  }
 
  const btn=$("manualTmdbLookup");
- btn.disabled=true;
- btn.textContent="TMDb wird durchsucht …";
+ btn.disabled=true; btn.textContent="TMDb wird durchsucht …";
 
  try{
   const base=String(window.DVD_LOOKUP_WORKER_URL||"").replace(/\/+$/,"");
   const r=await fetch(`${base}/tmdb-title?title=${encodeURIComponent(title)}`,{cache:"no-store"});
   const d=await r.json();
-
   if(!r.ok)throw new Error(d.message||d.error||`HTTP ${r.status}`);
-  if(!d.found){
-   $("manualFullError").textContent="Kein ausreichend sicherer TMDb-Treffer gefunden.";
+
+  const candidates=d.candidates||[];
+  if(!candidates.length){
+   $("manualFullError").textContent="Keine TMDb-Kandidaten gefunden.";
    $("manualFullError").classList.remove("hidden");
    return;
   }
 
-  manualTmdbData=d;
+  $("manualTmdbCount").textContent=`${candidates.length} Treffer`;
+  $("manualTmdbCandidates").innerHTML=candidates.map((c,i)=>{
+   const pct=Math.round(Number(c.tmdb_title_similarity||0)*100);
+   const poster=c.poster_url
+    ?`<img src="${escHtml(c.poster_url)}" alt="">`
+    :`<div class="cover-placeholder">🎬</div>`;
+   return `<article class="tmdb-candidate">
+    ${poster}
+    <div>
+     <h4>${escHtml(c.title||"–")}</h4>
+     <p>${[c.release_year,c.original_title&&c.original_title!==c.title?c.original_title:""].filter(Boolean).map(escHtml).join(" · ")}</p>
+     <p class="candidate-score">Titelähnlichkeit ${pct}% · Score ${escHtml(c.tmdb_match_score??"–")}</p>
+     ${c.overview?`<p>${escHtml(c.overview.slice(0,220))}${c.overview.length>220?"…":""}</p>`:""}
+    </div>
+    <button class="primary tmdb-pick" type="button" data-type="${escHtml(c.tmdb_type)}" data-id="${escHtml(c.tmdb_id)}">Auswählen</button>
+   </article>`;
+  }).join("");
 
-  const conf=matchConfidence(d);
-  $("manualTmdbConfidence").textContent=conf.label;
-  $("manualTmdbConfidence").className=`confidence-badge confidence-${conf.level}`;
-  $("manualTmdbTitle").textContent=d.title||title;
-  $("manualTmdbMeta").textContent=[
-   d.release_year,
-   d.genres?.join(", "),
-   d.runtime_minutes?`${d.runtime_minutes} Min.`:"",
-   d.fsk?`FSK ${d.fsk}`:"",
-   medium||""
-  ].filter(Boolean).join(" · ");
-  $("manualTmdbPeople").textContent=[
-   d.directors?.length?`Regie: ${d.directors.join(", ")}`:"",
-   d.actors?.length?`Darsteller: ${d.actors.slice(0,8).join(", ")}`:""
-  ].filter(Boolean).join(" | ");
-
-  const warnings=[];
-  if(conf.level==="low")warnings.push("Die Zuordnung ist unsicher. Bitte Titel und Film prüfen.");
-  if(d.tmdb_query_part!==null && d.tmdb_candidate_part===null)warnings.push("Die Quelle enthält eine Teil-/Episodennummer, der TMDb-Titel nicht.");
-  $("manualTmdbWarning").textContent=warnings.join(" ");
-  $("manualTmdbWarning").classList.toggle("hidden",warnings.length===0);
+  $("manualTmdbCandidates").querySelectorAll(".tmdb-pick").forEach(b=>{
+   b.onclick=()=>selectManualTmdbCandidate(b.dataset.type,b.dataset.id);
+  });
 
   $("manualTmdbResult").classList.remove("hidden");
   $("manualTmdbResult").scrollIntoView({behavior:"smooth",block:"center"});
-
  }catch(err){
   $("manualFullError").textContent="TMDb-Suche fehlgeschlagen: "+(err?.message||String(err));
   $("manualFullError").classList.remove("hidden");
  }finally{
-  btn.disabled=false;
-  btn.textContent="In TMDb suchen";
+  btn.disabled=false; btn.textContent="In TMDb suchen";
  }
 }
 
-function acceptManualTmdbData(){
- if(!manualTmdbData)return;
+async function selectManualTmdbCandidate(type,id){
+ $("manualFullError").classList.add("hidden");
+ try{
+  const base=String(window.DVD_LOOKUP_WORKER_URL||"").replace(/\/+$/,"");
+  const r=await fetch(`${base}/tmdb-detail?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`,{cache:"no-store"});
+  const d=await r.json();
+  if(!r.ok||!d.found)throw new Error(d.message||d.error||`HTTP ${r.status}`);
+  manualTmdbData=d;
 
- $("manualFullTitle").value=manualTmdbData.title||$("manualFullTitle").value;
+  $("manualFullTitle").value=d.title||$("manualFullTitle").value;
+  if(!$("manualFullActors").value.trim()&&d.actors?.length)$("manualFullActors").value=d.actors.join(", ");
+  if(!$("manualFullGenres").value.trim()&&d.genres?.length)$("manualFullGenres").value=d.genres.join(", ");
 
- if((!$("manualFullActors").value.trim()) && manualTmdbData.actors?.length){
-  $("manualFullActors").value=manualTmdbData.actors.join(", ");
+  $("manualTmdbResult").classList.add("hidden");
+  $("manualFullSuccess").textContent=`TMDb-Treffer „${d.title}“ ausgewählt. Metadaten werden beim Speichern übernommen.`;
+  $("manualFullSuccess").classList.remove("hidden");
+ }catch(err){
+  $("manualFullError").textContent="TMDb-Details konnten nicht übernommen werden: "+(err?.message||String(err));
+  $("manualFullError").classList.remove("hidden");
  }
- if((!$("manualFullGenres").value.trim()) && manualTmdbData.genres?.length){
-  $("manualFullGenres").value=manualTmdbData.genres.join(", ");
- }
-
- $("manualTmdbResult").classList.add("hidden");
- $("manualFullSuccess").textContent="TMDb-Daten wurden übernommen. Bitte Eintrag prüfen und speichern.";
- $("manualFullSuccess").classList.remove("hidden");
 }
 
 $("manualTmdbLookup").onclick=lookupManualTitleInTmdb;
-$("manualTmdbAccept").onclick=acceptManualTmdbData;
 $("manualTmdbReject").onclick=clearManualTmdbResult;
 
 async function saveManualFullEntry(){
