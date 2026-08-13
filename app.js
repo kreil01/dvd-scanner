@@ -1,4 +1,4 @@
-// DVD-Katalog v0.6.9 – app.js
+// DVD-Katalog v0.6.10 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null,pendingLookup=null;
 
@@ -427,6 +427,19 @@ async function findOrCreateTitleId(d,{showErrors=true}={}){
   }
   if(lookup.data?.[0]?.id){
    const existingId=lookup.data[0].id;
+   try{await backfillTitleMissingFields(existingId,d)}catch(_){}
+   return existingId;
+  }
+ }
+
+ if(!d.tmdb_id && d.title){
+  const byTitle=await db.from("titles").select("id").eq("title",d.title).limit(1);
+  if(byTitle.error){
+   if(showErrors){$("saveError").textContent=formatDbError("titles-title-select",byTitle.error);$("saveError").classList.remove("hidden");}
+   throw byTitle.error;
+  }
+  if(byTitle.data?.[0]?.id){
+   const existingId=byTitle.data[0].id;
    try{await backfillTitleMissingFields(existingId,d)}catch(_){}
    return existingId;
   }
@@ -959,27 +972,38 @@ async function refreshCurrentEanCache(){
   if(db){
    const edition=await findEdition(lastScannedEan);
    if(edition){
-    const correctTitleId=await findOrCreateTitleId(d,{showErrors:false});
+    let targetTitleId=edition.title_id;
 
-    if(correctTitleId!==edition.title_id){
+    if(d.tmdb_id){
+     // Falls derselbe TMDb-Film bereits existiert, auf diesen verknüpfen.
+     const existingTmdb=await db.from("titles").select("id")
+      .eq("tmdb_type",d.tmdb_type).eq("tmdb_id",d.tmdb_id).limit(1);
+     if(existingTmdb.error)throw existingTmdb.error;
+
+     if(existingTmdb.data?.[0]?.id){
+      targetTitleId=existingTmdb.data[0].id;
+     }else{
+      // Keine neue Titelzeile erzeugen: den bereits mit der EAN
+      // verknüpften Titel mit der bestätigten TMDb-Identität anreichern.
+      targetTitleId=edition.title_id;
+     }
+    }
+
+    if(targetTitleId!==edition.title_id){
      const upd=await db.from("editions").update({
-      title_id:correctTitleId,
+      title_id:targetTitleId,
       medium:d.medium||edition.medium||null,
       source:d.source||edition.source||null
      }).eq("id",edition.edition_id);
-
      if(upd.error)throw upd.error;
-
-     const fill=await backfillTitleMissingFields(correctTitleId,d);
      msg+="\n\nGespeicherte EAN-Zuordnung wurde korrigiert.";
-     if(fill.updated)msg+=`\nFehlende Metadaten ergänzt: ${fill.fields.join(", ")}.`;
-
     }else{
-     const fill=await backfillTitleMissingFields(edition.title_id,d);
-     msg+="\n\nDie gespeicherte Zuordnung war bereits korrekt.";
-     if(fill.updated)msg+=`\nFehlende Metadaten ergänzt: ${fill.fields.join(", ")}.`;
-     else msg+="\nEs waren keine leeren Metadatenfelder zu ergänzen.";
+     msg+="\n\nDie bestehende Titelzeile wird weiterverwendet.";
     }
+
+    const fill=await backfillTitleMissingFields(targetTitleId,d);
+    if(fill.updated)msg+=`\nFehlende Metadaten ergänzt: ${fill.fields.join(", ")}.`;
+    else msg+="\nEs waren keine leeren Metadatenfelder zu ergänzen.";
    }
   }
 
