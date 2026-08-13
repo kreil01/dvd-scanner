@@ -96,3 +96,164 @@ input,textarea,select{width:100%;background:#0c1728;color:var(--text);border:1px
   .manual-form-grid{grid-template-columns:1fr}
   .manual-form-grid .span-2{grid-column:auto}
 }
+
+
+/* =========================================================
+   v0.6.8 – Layout-Kompatibilität für aktuelles index.html
+   ========================================================= */
+.login-screen{
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  background:
+    radial-gradient(circle at 50% 14%,rgba(45,108,223,.20),transparent 34%),
+    linear-gradient(180deg,#08111f,#0a1423);
+}
+.login-card{
+  width:min(440px,100%);
+  padding:30px;
+  border:1px solid #203653;
+  border-radius:22px;
+  background:linear-gradient(180deg,#111d31,#0c1728);
+  box-shadow:0 28px 70px rgba(0,0,0,.45);
+}
+.login-card label{display:block;margin:12px 0;color:#cdd9e8;font-weight:700}
+.login-note{margin-top:14px;padding:11px;border-radius:11px;background:#0c1728;color:#8fa4bf;font-size:.82rem}
+
+.brand{display:flex;align-items:center;gap:10px}
+.brand>div:last-child{display:flex;flex-direction:column;gap:2px}
+.brand strong{font-size:.98rem}
+.brand span{font-size:.72rem;color:#8196b3}
+.brand-mark{
+  display:grid;place-items:center;width:34px;height:34px;border-radius:11px;
+  background:linear-gradient(135deg,#2d6cdf,#20b2aa);color:white;font-size:.78rem;
+  box-shadow:0 8px 22px rgba(45,108,223,.24)
+}
+.brand-login{margin-bottom:22px}
+
+.sidebar{
+  position:fixed;
+  top:20px;
+  bottom:20px;
+  left:max(18px,calc((100vw - 1460px)/2 + 18px));
+  width:205px;
+  z-index:50;
+  display:flex;
+  flex-direction:column;
+  padding:18px 12px 14px;
+  background:linear-gradient(180deg,#111d31,#0c1728);
+  border:1px solid #20324c;
+  border-radius:22px;
+  box-shadow:0 18px 40px rgba(0,0,0,.28)
+}
+.sidebar .tabs{
+  position:static;
+  width:auto;height:auto;
+  padding:0;margin:26px 0 0;
+  background:transparent;border:0;border-radius:0;box-shadow:none;
+  display:flex;flex-direction:column;gap:6px
+}
+.sidebar .tabs:before{display:none}
+.sidebar-nav .tab{display:flex;align-items:center;gap:10px;width:100%}
+.nav-icon{width:22px;text-align:center;opacity:.82}
+.sidebar-foot{margin-top:auto;padding-top:14px;border-top:1px solid #233750}
+.sidebar-caption{font-size:.66rem;letter-spacing:.14em;color:#6f86a5;font-weight:900}
+.user-email{margin:6px 0 10px;color:#b8c7da;font-size:.76rem;overflow-wrap:anywhere}
+.ghost{
+  border:1px solid #2c405d;background:transparent;color:#9db0c9;
+  border-radius:11px;padding:10px 12px;font-weight:750
+}
+.ghost:hover{background:#17263c;color:white}
+
+.workspace{min-width:0}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.topbar h1{margin:3px 0 2px}
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.status-pill{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:32px;padding:6px 11px;border-radius:999px;
+  border:1px solid #2a4364;background:#14243a;color:#d7e4f5;
+  font-size:.76rem;font-weight:800
+}
+.page-heading{margin:8px 0 14px}
+.page-heading h2{margin:0 0 4px;font-size:1.55rem}
+.page-heading p{margin:0;color:#8fa4bf}
+.card-kicker{
+  margin-bottom:5px;font-size:.67rem;font-weight:900;letter-spacing:.15em;
+  color:#61cbc5
+}
+.scan-layout{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}
+.location-card,.scan-card{height:100%}
+.scan-hero-icon{
+  display:grid;place-items:center;width:44px;height:44px;margin-bottom:10px;
+  border-radius:14px;background:rgba(45,108,223,.14);color:#79a8ff;font-size:1.35rem
+}
+.scan-status{min-height:20px;margin-top:9px;color:#8fa4bf;font-size:.84rem}
+.result-topline{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.result-copy{min-width:0}
+.film-meta{font-weight:700;color:#bdcadb}
+.save-state{font-weight:800}
+.collection-toolbar{padding:13px}
+.search-wrap{display:flex;align-items:center;gap:8px}
+.search-wrap>span{font-size:1.15rem;color:#6f88ab}
+.search-wrap .search{margin:0}
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.tech-card{
+  margin:16px 0 0;padding:0;border:1px solid #203653;border-radius:16px;
+  background:#0d192b
+}
+.tech-card details{padding:14px 16px}
+.tech-content{padding-top:10px}
+.icon-button{
+  width:36px;height:36px;border:1px solid #304866;border-radius:10px;
+  background:#16263c;color:#dce7f7;font-size:1.25rem
+}
+.modal-head{align-items:center}
+.invalid-digit{
+  border-color:#ef4444!important;
+  box-shadow:0 0 0 2px rgba(239,68,68,.16)!important;
+  color:#ffb5b5!important
+}
+
+/* Match-Bestätigung */
+.match-review{
+  margin:14px 0;padding:16px;border-radius:15px;
+  border:1px solid #31557f;
+  background:linear-gradient(145deg,rgba(20,36,58,.98),rgba(10,23,40,.98))
+}
+.match-review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.match-review-head h3{margin:2px 0 0}
+.confidence-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:6px 10px;border-radius:999px;font-size:.74rem;font-weight:900;
+  border:1px solid #35516f;background:#17283f;color:#d7e6f8
+}
+.confidence-high{border-color:rgba(34,197,94,.42);background:rgba(34,197,94,.12);color:#88e3a7}
+.confidence-medium{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.12);color:#ffd27c}
+.confidence-low{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.12);color:#ffaaa9}
+.match-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:13px 0}
+.match-metrics>div{padding:10px;border-radius:11px;background:#0b1728;border:1px solid #213853}
+.match-metrics span{display:block;color:#8096b3;font-size:.68rem;margin-bottom:3px}
+.match-metrics strong{font-size:.92rem}
+.review-form{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+.review-form label{font-size:.82rem;color:#b9c8db;font-weight:750}
+.review-actions{display:flex;gap:9px;margin-top:12px}
+.review-actions button{flex:1}
+#refreshEanCache{margin-top:10px}
+
+@media(max-width:980px){
+  .sidebar{
+    top:auto;left:12px;right:12px;bottom:12px;width:auto;height:auto;
+    padding:8px;border-radius:16px
+  }
+  .sidebar>.brand,.sidebar-foot{display:none}
+  .sidebar .tabs{margin:0;display:flex;flex-direction:row}
+  .sidebar .tab{justify-content:center}
+  .scan-layout,.report-grid{grid-template-columns:1fr}
+}
+@media(max-width:680px){
+  .match-metrics{grid-template-columns:1fr 1fr 1fr}
+  .review-form{grid-template-columns:1fr}
+  .review-actions{flex-direction:column}
+}

@@ -1,6 +1,6 @@
-// DVD-Katalog v0.6.7 – app.js
+// DVD-Katalog v0.6.8 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
-const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null;
+const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null,pendingLookup=null;
 
 window.addEventListener("error", e=>{
   const tech=document.getElementById("tech");
@@ -254,16 +254,29 @@ $("file").addEventListener("change", async event=>{
 });
 
 async function process(ean){
- $("result").classList.remove("hidden");$("ean").textContent=ean;$("duplicate").classList.add("hidden");$("saveState").textContent="";$("saveError").classList.add("hidden");$("saveError").textContent="";$("lookupState").textContent="Prüfe …";
+ pendingLookup=null;
+ $("result").classList.remove("hidden");
+ $("ean").textContent=ean;
+ $("duplicate").classList.add("hidden");
+ $("saveState").textContent="";
+ $("saveError").classList.add("hidden");
+ $("saveError").textContent="";
+ $("lookupState").textContent="Prüfe …";
+ $("matchReview").classList.add("hidden");
+ $("refreshEanCache").classList.add("hidden");
+
  if(db){
   const x=await findEdition(ean);
   if(x){
    showExisting(x);
+   $("refreshEanCache").classList.remove("hidden");
    return {found:true,existing:true,data:x};
   }
  }
+
  $("lookupState").textContent="Produktsuche …";
  const d=await lookup(ean);
+
  if(!d.found){
   $("title").textContent="Kein Produkt gefunden";
   $("filmMeta").textContent=d.message||"";
@@ -272,16 +285,15 @@ async function process(ean){
   $("lookupState").textContent="Offen";
   return {found:false,data:d};
  }
- showLookup(d);
- if(db){
-  const saved=await saveAll(ean,d);
-  $("saveState").textContent=saved?"✓ Film und Ausgabe gespeichert":"⚠ Speichern fehlgeschlagen – Details unten";
-  return {found:true,saved,data:d};
- }
- $("saveState").textContent="⚠ Supabase noch nicht eingerichtet";
- return {found:true,saved:false,data:d};
-}
 
+ showLookup(d);
+ pendingLookup={ean,data:d,originalTitle:d.title||"",originalMedium:d.medium||""};
+ showMatchReview(d);
+ $("saveState").textContent="Noch nicht gespeichert – Zuordnung bitte prüfen.";
+ $("lookupState").textContent="Prüfen";
+ $("refreshEanCache").classList.remove("hidden");
+ return {found:true,pending:true,data:d};
+}
 async function lookup(ean){
  const base=String(window.DVD_LOOKUP_WORKER_URL||"").replace(/\/+$/,"");
  const r=await fetch(`${base}/lookup?ean=${encodeURIComponent(ean)}`,{cache:"no-store"});
@@ -303,6 +315,101 @@ function showLookup(d){
  }
  $("lookupState").textContent="Gefunden";
 }
+function matchConfidence(d){
+ if(!d?.tmdb_id)return {level:"low",label:"Keine TMDb-Zuordnung"};
+ const sim=Number(d.tmdb_title_similarity||0);
+ const qPart=d.tmdb_query_part??null,cPart=d.tmdb_candidate_part??null;
+ const partConflict=qPart!==null && cPart!==null && qPart!==cPart;
+ const missingPart=qPart!==null && cPart===null;
+ if(partConflict||missingPart||sim<0.55)return {level:"low",label:"Niedrige Konfidenz"};
+ if(sim<0.72)return {level:"medium",label:"Mittlere Konfidenz"};
+ return {level:"high",label:"Hohe Konfidenz"};
+}
+
+function showMatchReview(d){
+ const conf=matchConfidence(d);
+ $("matchReview").classList.remove("hidden");
+ $("matchConfidence").textContent=conf.label;
+ $("matchConfidence").className=`confidence-badge confidence-${conf.level}`;
+ $("matchSimilarity").textContent=d.tmdb_id?`${Math.round(Number(d.tmdb_title_similarity||0)*100)} %`:"–";
+ $("matchScore").textContent=d.tmdb_match_score??"–";
+ const qp=d.tmdb_query_part??null,cp=d.tmdb_candidate_part??null;
+ $("matchPart").textContent=qp!==null?`Quelle ${qp} / TMDb ${cp??"keine"}`:"keine";
+ $("reviewTitle").value=d.title||"";
+ $("reviewMedium").value=["DVD","Blu-ray","4K UHD","Sonstiges"].includes(d.medium)?d.medium:"";
+
+ const warning=[];
+ if(!d.tmdb_id)warning.push("Es wurde keine belastbare TMDb-Zuordnung gefunden.");
+ if(qp!==null&&cp===null)warning.push(`Die Quelle deutet auf Teil/Episode ${qp}, der TMDb-Titel trägt jedoch keine erkennbare Teilnummer.`);
+ if(qp!==null&&cp!==null&&qp!==cp)warning.push(`Teil-/Episodennummer widerspricht sich: Quelle ${qp}, TMDb ${cp}.`);
+ if(Number(d.tmdb_title_similarity||0)<0.55&&d.tmdb_id)warning.push("Die Titelähnlichkeit ist niedrig.");
+ $("matchWarning").textContent=warning.join(" ");
+ $("matchWarning").classList.toggle("hidden",warning.length===0);
+
+ $("reviewTitleHint").textContent="Wird der Titel geändert, speichert die App den Eintrag bewusst ohne TMDb-Verknüpfung und ohne automatisch übernommene TMDb-Zusatzdaten.";
+}
+
+function buildConfirmedLookup(){
+ if(!pendingLookup)return null;
+ const d={...pendingLookup.data};
+ const reviewedTitle=$("reviewTitle").value.trim();
+ const reviewedMedium=$("reviewMedium").value||null;
+ const titleChanged=reviewedTitle && reviewedTitle!==pendingLookup.originalTitle;
+
+ d.medium=reviewedMedium;
+ if(titleChanged){
+  d.title=reviewedTitle;
+  d.tmdb_type=null;
+  d.tmdb_id=null;
+  d.original_title=null;
+  d.release_year=null;
+  d.genres=[];
+  d.directors=[];
+  d.actors=[];
+  d.runtime_minutes=null;
+  d.fsk=null;
+  d.production_countries=[];
+  if(d.poster_source==="TMDb")d.poster_url=d.product_image_url||null;
+  d.metadata_enriched=false;
+  d.metadata_status="Titel manuell korrigiert – keine TMDb-Zusatzdaten übernommen";
+ }
+ return d;
+}
+
+async function confirmLookupAndSave(){
+ if(!pendingLookup||!db)return;
+ $("confirmLookupSave").disabled=true;
+ $("saveError").classList.add("hidden");
+ try{
+  const d=buildConfirmedLookup();
+  const saved=await saveAll(pendingLookup.ean,d);
+  if(saved){
+   $("saveState").textContent="✓ Film und Ausgabe gespeichert";
+   $("lookupState").textContent="Gespeichert";
+   $("matchReview").classList.add("hidden");
+   pendingLookup=null;
+  }else{
+   $("saveState").textContent="⚠ Speichern fehlgeschlagen – Details unten";
+  }
+ }finally{
+  $("confirmLookupSave").disabled=false;
+ }
+}
+
+function rejectLookupToManual(){
+ if(!pendingLookup)return;
+ $("manualFullBarcode").value=pendingLookup.ean;
+ $("manualFullTitle").value=$("reviewTitle").value.trim()||pendingLookup.data.title||"";
+ $("manualFullMedium").value=$("reviewMedium").value||pendingLookup.data.medium||"";
+ $("manualFullActors").value=(pendingLookup.data.actors||[]).join(", ");
+ $("manualFullGenres").value=(pendingLookup.data.genres||[]).join(", ");
+ $("manualFullTitle").focus();
+ $("manualFullTitle").scrollIntoView({behavior:"smooth",block:"center"});
+}
+
+$("confirmLookupSave").onclick=confirmLookupAndSave;
+$("rejectLookup").onclick=rejectLookupToManual;
+
 function showExisting(x){
  $("title").textContent=x.title;$("filmMeta").textContent=[x.release_year,x.genres?.join(", "),x.medium].filter(Boolean).join(" · ");
  $("people").textContent=x.actors?.length?`Darsteller: ${x.actors.slice(0,8).join(", ")}`:"";
@@ -310,79 +417,53 @@ function showExisting(x){
 }
 async function findEdition(ean){const {data,error}=await db.from("catalog_view").select("*").eq("ean",ean).limit(1);if(error)return null;return data?.[0]||null}
 
-async function saveAll(ean,d){
- let titleId=null;
-
+async function findOrCreateTitleId(d,{showErrors=true}={}){
  if(d.tmdb_id){
-   const lookup = await db
-     .from("titles")
-     .select("id")
-     .eq("tmdb_type",d.tmdb_type)
-     .eq("tmdb_id",d.tmdb_id)
-     .limit(1);
-
-   if(lookup.error){
-     $("saveError").textContent=formatDbError("titles-select",lookup.error);
-     $("saveError").classList.remove("hidden");
-     return false;
-   }
-
-   titleId=lookup.data?.[0]?.id||null;
+  const lookup=await db.from("titles").select("id")
+   .eq("tmdb_type",d.tmdb_type).eq("tmdb_id",d.tmdb_id).limit(1);
+  if(lookup.error){
+   if(showErrors){$("saveError").textContent=formatDbError("titles-select",lookup.error);$("saveError").classList.remove("hidden");}
+   throw lookup.error;
+  }
+  if(lookup.data?.[0]?.id)return lookup.data[0].id;
  }
 
- if(!titleId){
-   const row={
-     tmdb_type:d.tmdb_type||null,
-     tmdb_id:d.tmdb_id||null,
-     title:d.title||"",
-     original_title:d.original_title||null,
-     release_year:d.release_year||null,
-     genres:d.genres||[],
-     directors:d.directors||[],
-     actors:d.actors||[],
-     runtime_minutes:d.runtime_minutes||null,
-     fsk:d.fsk||null,
-     production_countries:d.production_countries||[],
-     poster_url:d.poster_url||null
-   };
-
-   const ins = await db.from("titles").insert(row).select("id").single();
-
-   if(ins.error){
-     $("saveError").textContent=formatDbError("titles-insert",ins.error);
-     $("saveError").classList.remove("hidden");
-     return false;
-   }
-
-   titleId=ins.data.id;
- }
-
- const pos=await getPosition();
-
- const ed={
-   ean,
-   title_id:titleId,
-   medium:d.medium||null,
-   edition_name:d.edition_name||null,
-   publisher:d.publisher||null,
-   languages:d.languages||[],
-   area:$("area").value.trim()||null,
-   shelf:$("shelf").value.trim()||null,
-   compartment:$("compartment").value.trim()||null,
-   position:pos,
-   source:d.source||null
+ const row={
+  tmdb_type:d.tmdb_type||null,tmdb_id:d.tmdb_id||null,title:d.title||"",
+  original_title:d.original_title||null,release_year:d.release_year||null,
+  genres:d.genres||[],directors:d.directors||[],actors:d.actors||[],
+  runtime_minutes:d.runtime_minutes||null,fsk:d.fsk||null,
+  production_countries:d.production_countries||[],poster_url:d.poster_url||null
  };
+ const ins=await db.from("titles").insert(row).select("id").single();
+ if(ins.error){
+  if(showErrors){$("saveError").textContent=formatDbError("titles-insert",ins.error);$("saveError").classList.remove("hidden");}
+  throw ins.error;
+ }
+ return ins.data.id;
+}
 
- const insEdition = await db.from("editions").insert(ed);
-
- if(insEdition.error){
+async function saveAll(ean,d){
+ try{
+  const titleId=await findOrCreateTitleId(d);
+  const pos=await getPosition();
+  const ed={
+   ean,title_id:titleId,medium:d.medium||null,edition_name:d.edition_name||null,
+   publisher:d.publisher||null,languages:d.languages||[],
+   area:$("area").value.trim()||null,shelf:$("shelf").value.trim()||null,
+   compartment:$("compartment").value.trim()||null,position:pos,source:d.source||null
+  };
+  const insEdition=await db.from("editions").insert(ed);
+  if(insEdition.error){
    $("saveError").textContent=formatDbError("editions-insert",insEdition.error);
    $("saveError").classList.remove("hidden");
    return false;
+  }
+  if(!$("position").value)$("position").placeholder=String((pos||0)+1);
+  return true;
+ }catch(_){
+  return false;
  }
-
- if(!$("position").value) $("position").placeholder=String((pos||0)+1);
- return true;
 }
 async function getPosition(){
  if($("position").value)return parseInt($("position").value,10);
@@ -704,7 +785,7 @@ async function uploadManualCover(ean){
 
 async function findTitleByExactName(title){
  if(!db)return null;
- const q=await db.from("titles").select("*").ilike("title",title).limit(1);
+ const q=await db.from("titles").select("*").eq("title",title).limit(1);
  if(q.error)throw q.error;
  return q.data?.[0]||null;
 }
@@ -821,7 +902,7 @@ async function saveManualFullEntry(){
 $("manualFullSubmit").onclick=saveManualFullEntry;
 
 
-$("next").onclick=()=>{$("result").classList.add("hidden");status("Bereit")};
+$("next").onclick=()=>{pendingLookup=null;$("result").classList.add("hidden");$("matchReview").classList.add("hidden");$("refreshEanCache").classList.add("hidden");status("Bereit")};
 
 $("closeEdit").onclick=closeEdit;
 $("saveEdit").onclick=saveEdit;
@@ -829,17 +910,6 @@ $("deleteEdition").onclick=deleteEdition;
 $("editOverlay").addEventListener("click",e=>{if(e.target===$("editOverlay"))closeEdit()});
 
 
-async function getOrCreateTitleForLookup(d){
- if(d.tmdb_id){
-  const q=await db.from("titles").select("id").eq("tmdb_type",d.tmdb_type).eq("tmdb_id",d.tmdb_id).limit(1);
-  if(q.error)throw q.error;
-  if(q.data?.[0]?.id)return q.data[0].id;
- }
- const row={tmdb_type:d.tmdb_type||null,tmdb_id:d.tmdb_id||null,title:d.title||"",original_title:d.original_title||null,release_year:d.release_year||null,genres:d.genres||[],directors:d.directors||[],actors:d.actors||[],runtime_minutes:d.runtime_minutes||null,fsk:d.fsk||null,production_countries:d.production_countries||[],poster_url:d.poster_url||null};
- const ins=await db.from("titles").insert(row).select("id").single();
- if(ins.error)throw ins.error;
- return ins.data.id;
-}
 
 async function refreshCurrentEanCache(){
  if(!lastScannedEan){alert("Bitte zuerst die betroffene EAN scannen.");return}
@@ -855,7 +925,7 @@ async function refreshCurrentEanCache(){
   if(db){
    const edition=await findEdition(lastScannedEan);
    if(edition){
-    const correctTitleId=await getOrCreateTitleForLookup(d);
+    const correctTitleId=await findOrCreateTitleId(d,{showErrors:false});
     if(correctTitleId!==edition.title_id){
      const upd=await db.from("editions").update({title_id:correctTitleId,medium:d.medium||edition.medium||null,source:d.source||edition.source||null}).eq("id",edition.edition_id);
      if(upd.error)throw upd.error;
