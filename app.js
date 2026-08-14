@@ -1,4 +1,4 @@
-// DVD-Katalog v0.6.11 – app.js
+// Filmarchiv v0.2 – app.js
 // Änderungen ggü. v0.4.1: Supabase Auth Login-Gate (showApp/showLogin/initAuthGate/doLogin), Abmelden-Button
 const $=id=>document.getElementById(id); let db=null,catalog=[],editing=null,lastScannedEan=null,pendingLookup=null,manualTmdbData=null,manualTmdbCandidates=[];
 
@@ -83,6 +83,7 @@ function showApp(session){
  $("loginScreen").classList.add("hidden");
  $("appMain").classList.remove("hidden");
  $("userEmail").textContent=session?.user?.email||"";
+ loadCatalog().then(renderDashboard);
 }
 function showLogin(){
  $("appMain").classList.add("hidden");
@@ -136,15 +137,17 @@ function formatDbError(stage,error){
  };
  return JSON.stringify(obj,null,2);
 }
-document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
- document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");
- const n=b.dataset.tab;
+function activateTab(n){
+ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.tab===n));
+ $("dashboardPanel").classList.toggle("hidden",n!=="dashboard");
  $("scanPanel").classList.toggle("hidden",n!=="scan");
  $("collectionPanel").classList.toggle("hidden",n!=="collection");
  $("reportingPanel").classList.toggle("hidden",n!=="reporting");
- if(n==="collection")loadCatalog().then(safeRender(renderSearch,"Sammlung"));
- if(n==="reporting")loadCatalog().then(safeRender(renderReports,"Reporting"));
-});
+ if(n==="dashboard")loadCatalog().then(renderDashboard);
+ if(n==="collection")loadCatalog().then(()=>{renderSearch();renderCollectionTable()});
+ if(n==="reporting")loadCatalog().then(safeRender(renderReports,"Statistik"));
+}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>activateTab(b.dataset.tab));
 
 function safeRender(fn,label){
  return function(){
@@ -523,6 +526,33 @@ async function getPosition(){
  const {data}=await q.order("position",{ascending:false}).limit(1);
  return (data?.[0]?.position||0)+1;
 }
+let collectionView="grid";
+
+function filteredCatalog(){
+ let items=[...catalog];
+ const medium=$("mediumFilter")?.value||"";
+ if(medium)items=items.filter(x=>(x.medium||"")===medium);
+ const q=$("search")?.value.trim().toLowerCase()||"";
+ if(q){items=items.filter(x=>[x.title,x.original_title,x.medium,x.release_year,...(x.actors||[]),...(x.directors||[]),...(x.genres||[]),x.area,x.shelf,x.compartment,x.ean].filter(Boolean).join(" ").toLowerCase().includes(q))}
+ const sort=$("collectionSort")?.value||"title";
+ items.sort((a,b)=>sort==="recent"?String(b.created_at||"").localeCompare(String(a.created_at||"")):sort==="year-desc"?(b.release_year||0)-(a.release_year||0):sort==="year-asc"?(a.release_year||9999)-(b.release_year||9999):String(a.title||"").localeCompare(String(b.title||""),"de"));
+ return items;
+}
+function renderDashboard(){
+ const unique=new Map(catalog.map(x=>[x.title_id,x])).size;
+ const vals=[catalog.length,unique,catalog.filter(x=>(x.medium||"").toLowerCase().includes("blu")).length,catalog.filter(x=>(x.medium||"").toLowerCase().includes("dvd")).length];
+ document.querySelectorAll("#dashboardKpis strong").forEach((e,i)=>e.textContent=vals[i]||0);
+ const recent=[...catalog].sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||""))).slice(0,5);
+ $("recentMovies").innerHTML=recent.length?recent.map(x=>`<article class="cover-tile" data-id="${x.edition_id}">${x.poster_url?`<img src="${esc(x.poster_url)}" alt="">`:`<div class="cover-placeholder">◉</div>`}<h4>${esc(x.title||"–")}</h4><p>${esc([x.release_year,x.medium].filter(Boolean).join(" · "))}</p></article>`).join(""):`<p class="muted">Noch keine Medien vorhanden.</p>`;
+ $("recentMovies").querySelectorAll(".cover-tile").forEach(c=>c.onclick=()=>{const x=catalog.find(y=>String(y.edition_id)===String(c.dataset.id));if(x)openEdit(x)});
+ const counts={};catalog.forEach(x=>{const k=normalizeMedium(x.medium);counts[k]=(counts[k]||0)+1});const max=Math.max(1,...Object.values(counts));
+ $("dashboardMediaBars").innerHTML=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="mini-bar-row"><div class="mini-bar-label"><span>${esc(k)}</span><strong>${v}</strong></div><div class="mini-bar"><span style="width:${Math.round(v/max*100)}%"></span></div></div>`).join("")||'<p class="muted">Keine Daten.</p>';
+}
+function renderCollectionTable(){
+ const b=$("collectionTableBody");if(!b)return;const items=filteredCatalog();
+ b.innerHTML=items.map(x=>`<tr><td>${x.poster_url?`<img class="table-cover" src="${esc(x.poster_url)}" alt="">`:""}</td><td><strong>${esc(x.title||"–")}</strong></td><td>${esc(x.medium||"–")}</td><td>${esc(x.release_year||"–")}</td><td>${esc((x.genres||[]).slice(0,2).join(", ")||"–")}</td><td>${esc(locationText(x)||"–")}</td><td><button class="secondary table-edit" data-id="${x.edition_id}">Bearbeiten</button></td></tr>`).join("");
+ b.querySelectorAll(".table-edit").forEach(btn=>btn.onclick=()=>{const x=catalog.find(y=>String(y.edition_id)===String(btn.dataset.id));if(x)openEdit(x)});
+}
 async function loadCatalog(){
  if(!db){catalog=[];return}
  const {data,error}=await db.from("catalog_view").select("*").order("title",{ascending:true});
@@ -533,33 +563,13 @@ function locationText(x){return [x.area,x.shelf,x.compartment,x.position?`Pos. $
 
 $("search").oninput=safeRender(renderSearch,"Sammlung");$("refresh").onclick=()=>loadCatalog().then(safeRender(renderSearch,"Sammlung"));
 function renderSearch(){
- const q=$("search").value.trim().toLowerCase();$("groups").innerHTML="";
- if(!q){
-   $("searchSummary").textContent=`${catalog.length} Medien in der Sammlung`;
-   const g=document.createElement("div");g.className="group";g.innerHTML=`<h3><span>Alle Medien</span><span>${catalog.length}</span></h3>`;
-   catalog.forEach(x=>g.appendChild(movieCard(x,"Sammlung")));$("groups").appendChild(g);
-   return;
- }
- const specs=[
-  ["Titel",x=>[x.title,x.original_title]],
-  ["Schauspieler",x=>x.actors||[]],
-  ["Regisseur",x=>x.directors||[]],
-  ["Genre",x=>x.genres||[]],
-  ["Erscheinungsjahr",x=>[x.release_year]],
-  ["Medium",x=>[x.medium]],
-  ["FSK",x=>[x.fsk]],
-  ["Standort",x=>[x.area,x.shelf,x.compartment,x.position]],
-  ["EAN",x=>[x.ean]]
- ];
- let total=0;
- for(const [label,vals] of specs){
-   const hits=catalog.filter(x=>vals(x).filter(v=>v!==null&&v!==undefined).some(v=>String(v).toLowerCase().includes(q)));
-   if(!hits.length)continue;total+=hits.length;
-   const g=document.createElement("div");g.className="group";g.innerHTML=`<h3><span>${label}</span><span>${hits.length}</span></h3>`;
-   hits.forEach(x=>g.appendChild(movieCard(x,label)));$("groups").appendChild(g);
- }
- $("searchSummary").textContent=`${total} Treffer in den angezeigten Kategorien`;
+ const items=filteredCatalog();$("groups").innerHTML="";
+ $("searchSummary").textContent=`${items.length} Medien angezeigt`;
+ const g=document.createElement("div");g.className="group";g.innerHTML=`<h3><span>Sammlung</span><span>${items.length}</span></h3>`;
+ items.forEach(x=>g.appendChild(movieCard(x,"Sammlung")));$("groups").appendChild(g);
+ if(collectionView==="table")renderCollectionTable();
 }
+
 function movieCard(x,reason){
  const d=document.createElement("div");d.className="movie";
  let poster;
@@ -1259,6 +1269,16 @@ async function refreshCurrentEanCache(){
  }
 }
 $("refreshEanCache").onclick=refreshCurrentEanCache;
+
+
+$("quickAdd").onclick=()=>activateTab("scan");
+$("dashAll").onclick=()=>activateTab("collection");
+$("dashboardSearchBtn").onclick=()=>{$("search").value=$("dashboardSearch").value;activateTab("collection")};
+$("dashboardSearch").addEventListener("keydown",e=>{if(e.key==="Enter")$("dashboardSearchBtn").click()});
+$("mediumFilter").onchange=()=>{renderSearch();renderCollectionTable()};
+$("collectionSort").onchange=()=>{renderSearch();renderCollectionTable()};
+$("viewGrid").onclick=()=>{collectionView="grid";$("groups").classList.remove("hidden");$("collectionTableWrap").classList.add("hidden");$("viewGrid").classList.add("active");$("viewTable").classList.remove("active")};
+$("viewTable").onclick=()=>{collectionView="table";$("groups").classList.add("hidden");$("collectionTableWrap").classList.remove("hidden");$("viewTable").classList.add("active");$("viewGrid").classList.remove("active");renderCollectionTable()};
 
 init();
 initAuthGate();

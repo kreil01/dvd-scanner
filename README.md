@@ -123,5 +123,9 @@ Löschen:
 Abmelden: Button „Abmelden" oben rechts im Kopfbereich.
 
 
-## v0.6.8
-Externe Lookups müssen vor dem Speichern bestätigt werden. Das TMDb-Matching wurde für Fortsetzungen deutlich gehärtet. Siehe `FIX-v0.6.8.md`.
+## v0.6.9
+Externe Lookups müssen vor dem Speichern bestätigt werden. Das TMDb-Matching wurde für Fortsetzungen deutlich gehärtet. Siehe `FIX-v0.6.9.md`.
+
+
+## v0.6.9
+Metadata Backfill: fehlende Poster und andere leere TMDb-Felder können nachgeladen werden, ohne vorhandene manuelle Werte zu überschreiben.
