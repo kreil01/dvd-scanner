@@ -583,6 +583,19 @@ function movieCard(x,reason){
 
 function openEdit(x){
  editing=x;
+ editCoverResizedBlob=null;
+ editCoverRemoveRequested=false;
+ $("editCoverFile").value="";
+ $("editCoverInfo").textContent="Kein neues Cover ausgewählt.";
+ $("editCoverUrl").textContent=x.poster_url?`Gespeicherte Cover-URL: ${x.poster_url}`:"Keine Cover-URL gespeichert.";
+ $("editCoverLoadError").classList.add("hidden");
+ if(x.poster_url){
+  $("editCoverPreview").src=x.poster_url;
+  $("editCoverPreview").classList.remove("hidden");
+ }else{
+  $("editCoverPreview").removeAttribute("src");
+  $("editCoverPreview").classList.add("hidden");
+ }
  $("editTitle").value=x.title||"";
  $("editActors").value=(x.actors||[]).join(", ");
  $("editDirectors").value=(x.directors||[]).join(", ");
@@ -596,12 +609,78 @@ function openEdit(x){
 }
 
 function closeEdit(){
+ editCoverResizedBlob=null;
+ editCoverRemoveRequested=false;
  editing=null;
  $("editOverlay").classList.add("hidden");
 }
 
 function csvToArray(text){
  return String(text||"").split(",").map(x=>x.trim()).filter(Boolean);
+}
+
+
+$("editCoverPreview").addEventListener("error",()=>{
+ $("editCoverLoadError").classList.remove("hidden");
+});
+$("editCoverPreview").addEventListener("load",()=>{
+ $("editCoverLoadError").classList.add("hidden");
+});
+
+$("editCoverFile").addEventListener("change",async e=>{
+ const file=e.target.files?.[0];
+ editCoverResizedBlob=null;
+ editCoverRemoveRequested=false;
+ if(!file)return;
+ try{
+  $("editCoverInfo").textContent="Foto wird verkleinert …";
+  const resized=await resizeCoverImage(file);
+  editCoverResizedBlob=resized.blob;
+  const url=URL.createObjectURL(resized.blob);
+  $("editCoverPreview").src=url;
+  $("editCoverPreview").classList.remove("hidden");
+  $("editCoverUrl").textContent="Neues Cover vorbereitet, noch nicht gespeichert.";
+  $("editCoverInfo").textContent=`Neues Cover: ${resized.width} × ${resized.height}px · ${Math.max(1,Math.round(resized.blob.size/1024))} KB`;
+  $("editCoverPreview").onload=()=>{URL.revokeObjectURL(url);$("editCoverLoadError").classList.add("hidden")};
+ }catch(err){
+  $("editCoverInfo").textContent="Cover konnte nicht verarbeitet werden: "+(err?.message||String(err));
+ }
+});
+
+$("editCoverRemove").onclick=()=>{
+ editCoverResizedBlob=null;
+ editCoverRemoveRequested=true;
+ $("editCoverFile").value="";
+ $("editCoverPreview").removeAttribute("src");
+ $("editCoverPreview").classList.add("hidden");
+ $("editCoverLoadError").classList.add("hidden");
+ $("editCoverUrl").textContent="Cover wird beim Speichern entfernt.";
+ $("editCoverInfo").textContent="";
+};
+
+async function uploadEditCover(){
+ if(!editCoverResizedBlob)return null;
+ if(!db)throw new Error("Supabase ist nicht verbunden.");
+ const ref=editing?.ean||editing?.edition_id||"ohne-ean";
+ const path=`manual/edit-${Date.now()}-${ref}.jpg`;
+ const upload=await db.storage.from("covers").upload(path,editCoverResizedBlob,{
+  contentType:"image/jpeg",upsert:false,cacheControl:"3600"
+ });
+ if(upload.error)throw new Error("Cover-Upload fehlgeschlagen: "+upload.error.message);
+ const pub=db.storage.from("covers").getPublicUrl(path);
+ const publicUrl=pub.data?.publicUrl||null;
+ if(!publicUrl)throw new Error("Cover wurde hochgeladen, aber Supabase lieferte keine URL.");
+ return publicUrl;
+}
+
+async function verifySavedPoster(titleId,expectedUrl){
+ const q=await db.from("titles").select("poster_url").eq("id",titleId).single();
+ if(q.error)throw new Error("Cover-Rückprüfung fehlgeschlagen: "+q.error.message);
+ const actual=q.data?.poster_url||null;
+ if(actual!==expectedUrl){
+  throw new Error(`Cover wurde nicht korrekt gespeichert. Erwartet: ${expectedUrl||"(leer)"} · Datenbank: ${actual||"(leer)"}`);
+ }
+ return actual;
 }
 
 async function saveEdit(){
@@ -622,23 +701,32 @@ async function saveEdit(){
   position:$("editPosition").value?parseInt($("editPosition").value,10):null
  };
 
- const t=await db.from("titles").update(titleUpdate).eq("id",editing.title_id);
- if(t.error){
-  $("editError").textContent="Filmdaten: "+t.error.message;
-  $("editError").classList.remove("hidden");return;
- }
+ try{
+  if(editCoverResizedBlob){
+   titleUpdate.poster_url=await uploadEditCover();
+  }else if(editCoverRemoveRequested){
+   titleUpdate.poster_url=null;
+  }
 
- const e=await db.from("editions").update(editionUpdate).eq("id",editing.edition_id);
- if(e.error){
-  $("editError").textContent="Ausgabe/Standort: "+e.error.message;
-  $("editError").classList.remove("hidden");return;
- }
+  const t=await db.from("titles").update(titleUpdate).eq("id",editing.title_id);
+  if(t.error)throw new Error("Filmdaten: "+t.error.message);
 
- closeEdit();
- await loadCatalog();
- renderSearch();
+  if(Object.prototype.hasOwnProperty.call(titleUpdate,"poster_url")){
+   const verified=await verifySavedPoster(editing.title_id,titleUpdate.poster_url);
+   $("editCoverUrl").textContent=verified?`Gespeicherte Cover-URL: ${verified}`:"Cover wurde aus dem Datensatz entfernt.";
+  }
+
+  const e=await db.from("editions").update(editionUpdate).eq("id",editing.edition_id);
+  if(e.error)throw new Error("Ausgabe/Standort: "+e.error.message);
+
+  closeEdit();
+  await loadCatalog();
+  renderSearch();
+ }catch(err){
+  $("editError").textContent=err?.message||String(err);
+  $("editError").classList.remove("hidden");
+ }
 }
-
 async function deleteEdition(){
  if(!db||!editing)return;
  const label=`${editing.title} (${editing.medium||"Ausgabe"})`;
@@ -692,6 +780,8 @@ function renderBars(id,items){
 const manualDigits=[...document.querySelectorAll(".ean-digit")];
 let manualCoverOriginalFile=null;
 let manualCoverResizedBlob=null;
+let editCoverResizedBlob=null;
+let editCoverRemoveRequested=false;
 
 function isValidEan13(ean){
  if(!/^\d{13}$/.test(ean))return false;

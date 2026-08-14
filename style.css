@@ -285,3 +285,11 @@ input,textarea,select{width:100%;background:#0c1728;color:var(--text);border:1px
  .tmdb-candidate img{width:58px}
  .tmdb-candidate button{grid-column:1/-1;width:100%}
 }
+
+.edit-cover-box{margin-top:8px;padding:14px;border:1px solid #29415f;border-radius:14px;background:#0b1728}
+.edit-cover-row{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:start}
+.edit-cover-preview{width:120px;aspect-ratio:2/3;object-fit:cover;border-radius:9px;border:1px solid #2b405d;background:#15263b}
+.edit-cover-controls{display:flex;flex-direction:column;gap:9px;align-items:flex-start}
+#editCoverFile{display:none}
+#editCoverUrl{word-break:break-all;font-size:.72rem}
+@media(max-width:620px){.edit-cover-row{grid-template-columns:84px 1fr}.edit-cover-preview{width:84px}}

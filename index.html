@@ -287,6 +287,22 @@
           <label>Bereich<input id="editArea"></label><label>Regal<input id="editShelf"></label>
           <label>Fach<input id="editCompartment"></label><label>Position<input id="editPosition" type="number" min="1"></label>
         </div>
+        <h3>Cover</h3>
+        <div class="edit-cover-box">
+          <div class="edit-cover-row">
+            <div>
+              <img id="editCoverPreview" class="edit-cover-preview hidden" alt="Aktuelles Cover">
+              <div id="editCoverLoadError" class="error hidden">Cover-URL vorhanden, Bild konnte aber nicht geladen werden.</div>
+            </div>
+            <div class="edit-cover-controls">
+              <label class="secondary photo-button" for="editCoverFile">Eigenes Cover fotografieren / auswählen</label>
+              <input id="editCoverFile" type="file" accept="image/*" capture="environment">
+              <button id="editCoverRemove" class="ghost" type="button">Cover entfernen</button>
+              <div id="editCoverInfo" class="muted">Kein neues Cover ausgewählt.</div>
+              <div id="editCoverUrl" class="muted"></div>
+            </div>
+          </div>
+        </div>
         <div id="editError" class="error hidden"></div>
         <div class="edit-actions"><button id="saveEdit" class="primary">Änderungen speichern</button><button id="deleteEdition" class="danger">Ausgabe löschen</button></div>
       </div>
