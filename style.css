@@ -302,10 +302,7 @@ body{background:radial-gradient(circle at 75% 0%,rgba(45,108,223,.13),transparen
 .overlay{justify-content:flex-end!important}.modal{width:min(520px,100%)!important;height:100%!important;max-height:none!important;border-radius:0!important;border-left:1px solid #29405f!important;overflow:auto!important}.edit-cover-preview{max-width:110px}.report-grid{gap:14px}
 
 @media(min-width:901px){
-  .app-shell{
-    display:block;
-    padding-left:245px;
-  }
+  .app-shell{width:min(1600px,100%);margin:0 auto;min-height:100vh;padding-left:245px}
   .workspace{
     margin-left:0;
     width:100%;

@@ -152,6 +152,10 @@
               </select>
             </label>
             <label class="span-2">Titel *<input id="manualFullTitle" placeholder="Filmtitel"></label>
+            <label>Typ
+              <select id="manualFullContentType"><option value="movie">Film</option><option value="series">Serie</option></select>
+            </label>
+            <label>Staffel <input id="manualFullSeason" type="number" min="0" step="1" placeholder="z. B. 1"></label>
             <label class="span-2">Schauspieler <span class="muted">(durch Komma trennen)</span>
               <textarea id="manualFullActors" rows="2" placeholder="z. B. Tom Hanks, Meg Ryan"></textarea>
             </label>
@@ -349,6 +353,12 @@
         </div>
         <h3>Filmdaten</h3>
         <label>Titel<input id="editTitle"></label>
+        <div class="location-grid">
+          <label>Typ<select id="editContentType"><option value="movie">Film</option><option value="series">Serie</option></select></label>
+          <label>Staffel<input id="editSeason" type="number" min="0" step="1"></label>
+        </div>
+        <label>Genre <span class="muted">(durch Komma trennen)</span><input id="editGenres"></label>
+        <label>FSK<input id="editFsk" placeholder="z. B. 12"></label>
         <label>Schauspieler <span class="muted">(durch Komma trennen)</span><textarea id="editActors" rows="3"></textarea></label>
         <label>Regisseur <span class="muted">(durch Komma trennen)</span><textarea id="editDirectors" rows="2"></textarea></label>
         <h3>Physische Ausgabe</h3>
