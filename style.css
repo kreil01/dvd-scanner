@@ -344,3 +344,19 @@ body{background:radial-gradient(circle at 75% 0%,rgba(45,108,223,.13),transparen
 @media(max-width:620px){
   .cover-source-actions{grid-template-columns:1fr}
 }
+
+/* FIX v0.2.1 – Desktop-Sidebar: eigener reservierter Bereich, keine Überdeckung */
+@media (min-width:981px){
+  .app{
+    width:min(1580px,100%);
+    padding-left:250px;
+  }
+  .sidebar{
+    left:max(18px,calc((100vw - 1580px)/2 + 18px));
+    width:210px;
+  }
+  .workspace{
+    width:100%;
+    min-width:0;
+  }
+}
