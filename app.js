@@ -83,7 +83,13 @@ function showApp(session){
  $("loginScreen").classList.add("hidden");
  $("appMain").classList.remove("hidden");
  $("userEmail").textContent=session?.user?.email||"";
- loadCatalog().then(renderDashboard);
+ loadCatalog().then(async()=>{
+  renderDashboard();
+  // Einmaliger/fortsetzbarer Overview-Backfill: Bereits vorhandene Titel mit
+  // TMDb-Referenz erhalten ihre Beschreibung automatisch nach dem Rollout.
+  // Es werden bei jedem Start nur noch Datensätze ohne overview verarbeitet.
+  await backfillMissingOverviews();
+ });
 }
 function showLogin(){
  $("appMain").classList.add("hidden");
@@ -422,10 +428,8 @@ async function findEdition(ean){const {data,error}=await db.from("catalog_view")
 
 async function findOrCreateTitleId(d,{showErrors=true}={}){
  if(d.tmdb_id){
-  let query=db.from("titles").select("id")
-   .eq("tmdb_type",d.tmdb_type).eq("tmdb_id",d.tmdb_id);
-  query=d.season_number==null ? query.is("season_number",null) : query.eq("season_number",d.season_number);
-  const lookup=await query.limit(1);
+  const lookup=await db.from("titles").select("id")
+   .eq("tmdb_type",d.tmdb_type).eq("tmdb_id",d.tmdb_id).limit(1);
   if(lookup.error){
    if(showErrors){$("saveError").textContent=formatDbError("titles-select",lookup.error);$("saveError").classList.remove("hidden");}
    throw lookup.error;
@@ -451,25 +455,15 @@ async function findOrCreateTitleId(d,{showErrors=true}={}){
  }
 
  const row={
-  tmdb_type:d.tmdb_type||null,tmdb_id:d.tmdb_id||null,
-  content_type:d.content_type||(d.tmdb_type==="tv"?"series":d.tmdb_type==="movie"?"movie":null),
-  season_number:d.season_number??null,title:d.title||"",
+  tmdb_type:d.tmdb_type||null,tmdb_id:d.tmdb_id||null,title:d.title||"",
   original_title:d.original_title||null,release_year:d.release_year||null,
   genres:d.genres||[],directors:d.directors||[],actors:d.actors||[],
   runtime_minutes:d.runtime_minutes||null,fsk:d.fsk||null,
-  production_countries:d.production_countries||[],poster_url:d.poster_url||null
+  production_countries:d.production_countries||[],poster_url:d.poster_url||null,
+  overview:d.overview||null
  };
  const ins=await db.from("titles").insert(row).select("id").single();
  if(ins.error){
-  // Falls zwischen SELECT und INSERT derselbe TMDb-Titel angelegt wurde,
-  // die vorhandene Zeile wiederverwenden statt mit duplicate key abzubrechen.
-  if(d.tmdb_id && String(ins.error.code||"")==="23505"){
-   let retry=db.from("titles").select("id")
-    .eq("tmdb_type",d.tmdb_type).eq("tmdb_id",d.tmdb_id);
-   retry=d.season_number==null ? retry.is("season_number",null) : retry.eq("season_number",d.season_number);
-   const existing=await retry.limit(1);
-   if(!existing.error && existing.data?.[0]?.id)return existing.data[0].id;
-  }
   if(showErrors){$("saveError").textContent=formatDbError("titles-insert",ins.error);$("saveError").classList.remove("hidden");}
   throw ins.error;
  }
@@ -494,11 +488,7 @@ async function backfillTitleMissingFields(titleId,d){
  if(emptyScalar(current.fsk) && d.fsk)patch.fsk=d.fsk;
  if(emptyArray(current.production_countries) && Array.isArray(d.production_countries) && d.production_countries.length)patch.production_countries=d.production_countries;
  if(emptyScalar(current.poster_url) && d.poster_url)patch.poster_url=d.poster_url;
- if(emptyScalar(current.content_type)){
-  const inferred=d.content_type||(d.tmdb_type==="tv"?"series":d.tmdb_type==="movie"?"movie":null);
-  if(inferred)patch.content_type=inferred;
- }
- if(current.season_number==null && d.season_number!=null)patch.season_number=d.season_number;
+ if(emptyScalar(current.overview) && d.overview)patch.overview=d.overview;
 
  // TMDb-Identität nur ergänzen, wenn bislang keine existiert.
  if(emptyScalar(current.tmdb_type) && d.tmdb_type)patch.tmdb_type=d.tmdb_type;
@@ -576,9 +566,58 @@ async function loadCatalog(){
  if(!db){catalog=[];return}
  const {data,error}=await db.from("catalog_view").select("*").order("title",{ascending:true});
  if(error){$("tech").textContent="Datenbankfehler: "+error.message;catalog=[];return}
- catalog=data||[];$("count").textContent=catalog.length;
+ catalog=data||[];
+
+ // overview wird bewusst direkt aus titles ergänzt. Dadurch muss die bestehende
+ // catalog_view nicht ersetzt werden (wichtig für bereits migrierte Datenbanken).
+ try{
+  const ids=[...new Set(catalog.map(x=>x.title_id).filter(Boolean))];
+  if(ids.length){
+   const q=await db.from("titles").select("id,overview").in("id",ids);
+   if(!q.error){
+    const overviewById=new Map((q.data||[]).map(t=>[String(t.id),t.overview||""]));
+    catalog.forEach(x=>{x.overview=overviewById.get(String(x.title_id))||""});
+   }
+  }
+ }catch(_){/* Abwärtskompatibel, falls die overview-Migration noch nicht ausgeführt wurde. */}
+
+ $("count").textContent=catalog.length;
 }
 function locationText(x){return [x.area,x.shelf,x.compartment,x.position?`Pos. ${x.position}`:null].filter(Boolean).join(" · ")}
+
+async function backfillMissingOverviews(){
+ if(!db)return;
+ try{
+  const q=await db.from("titles").select("id,tmdb_type,tmdb_id,overview").is("overview",null).not("tmdb_id","is",null);
+  if(q.error){
+   // Migration noch nicht ausgeführt oder Schema nicht aktuell: App bleibt nutzbar.
+   console.warn("Overview-Backfill übersprungen:",q.error.message);
+   return;
+  }
+  const pending=(q.data||[]).filter(t=>t.tmdb_id&&["movie","tv"].includes(t.tmdb_type));
+  if(!pending.length)return;
+  const base=String(window.WORKER_BASE||"").replace(/\/$/,"");
+  if(!base)return;
+  $("tech").textContent=`Beschreibungen werden einmalig ergänzt (${pending.length} Titel)…`;
+  let done=0,failed=0;
+  // Bewusst seriell: schont TMDb und Supabase und macht den Prozess jederzeit fortsetzbar.
+  for(const t of pending){
+   try{
+    const r=await fetch(`${base}/tmdb-detail?type=${encodeURIComponent(t.tmdb_type)}&id=${encodeURIComponent(t.tmdb_id)}`,{cache:"no-store"});
+    const d=await r.json();
+    if(r.ok&&d.found&&d.overview){
+     const upd=await db.from("titles").update({overview:d.overview}).eq("id",t.id);
+     if(upd.error)throw upd.error;
+     catalog.forEach(x=>{if(String(x.title_id)===String(t.id))x.overview=d.overview});
+     done++;
+    }else failed++;
+   }catch(e){failed++;console.warn("Overview-Backfill fehlgeschlagen für title",t.id,e)}
+  }
+  $("tech").textContent=failed
+   ?`Beschreibungen ergänzt: ${done}; ohne verfügbaren Text/Fehler: ${failed}. Beim nächsten Start wird erneut geprüft.`
+   :`Beschreibungen erfolgreich ergänzt (${done} Titel).`;
+ }catch(e){console.warn("Overview-Backfill:",e)}
+}
 
 $("search").oninput=safeRender(renderSearch,"Sammlung");$("refresh").onclick=()=>loadCatalog().then(safeRender(renderSearch,"Sammlung"));
 function renderSearch(){
@@ -599,8 +638,7 @@ function movieCard(x,reason){
  const left=document.createElement("div");
  const h=document.createElement("h4");h.textContent=x.title||"(ohne Titel)";
  const meta=document.createElement("div");meta.className="muted";
- const cardType=x.content_type||(x.tmdb_type==="tv"?"series":x.tmdb_type==="movie"?"movie":null);
- meta.innerHTML=(x.medium?`<span class="media-badge">${esc(x.medium)}</span>`:"")+(cardType?` <span class="media-badge">${cardType==="series"?"Serie":"Film"}</span>`:"")+(x.season_number!=null?` <span class="media-badge">Staffel ${esc(x.season_number)}</span>`:"")+" "+[x.release_year,x.genres?.join(", ")].filter(Boolean).map(esc).join(" · ");
+ meta.innerHTML=(x.medium?`<span class="media-badge">${esc(x.medium)}</span>`:"")+[x.release_year,x.genres?.join(", ")].filter(Boolean).map(esc).join(" · ");
  const people=document.createElement("div");people.className="muted";
  people.textContent=[x.directors?.length?`Regie: ${x.directors.slice(0,2).join(", ")}`:"",x.fsk?`FSK ${x.fsk}`:""].filter(Boolean).join(" · ");
  const why=document.createElement("div");why.className="muted";why.textContent=`Treffer: ${reason}`;
@@ -613,7 +651,7 @@ function movieCard(x,reason){
 
 
 let detailItem=null;
-function openDetail(x){
+async function openDetail(x){
  detailItem=x;
  $("detailTitle").textContent=x.title||"(ohne Titel)";
  const poster=$("detailPoster"),ph=$("detailPosterPlaceholder");
@@ -621,11 +659,11 @@ function openDetail(x){
   poster.src=x.poster_url;poster.classList.remove("hidden");ph.classList.add("hidden");
   poster.onerror=()=>{poster.classList.add("hidden");ph.classList.remove("hidden")};
  }else{poster.removeAttribute("src");poster.classList.add("hidden");ph.classList.remove("hidden")}
- const badges=[];if(x.medium)badges.push(x.medium);if(x.fsk)badges.push(`FSK ${x.fsk}`);const catalogType=x.content_type||(x.tmdb_type==="tv"?"series":x.tmdb_type==="movie"?"movie":null);if(catalogType==="series")badges.push("Serie");else if(catalogType==="movie")badges.push("Film");if(x.season_number!=null)badges.push(`Staffel ${x.season_number}`);
+ const badges=[];if(x.medium)badges.push(x.medium);if(x.fsk)badges.push(`FSK ${x.fsk}`);if(x.tmdb_type==="tv")badges.push("Serie");else if(x.tmdb_type==="movie")badges.push("Film");
  $("detailBadges").innerHTML=badges.map(b=>`<span class="detail-badge">${esc(b)}</span>`).join("");
  $("detailMeta").textContent=[x.release_year,(x.genres||[]).slice(0,3).join(", "),x.runtime_minutes?`${x.runtime_minutes} Min.`:""].filter(Boolean).join(" · ")||"Keine weiteren Metadaten";
  $("detailLocation").textContent=locationText(x)?`Standort: ${locationText(x)}`:"Kein Standort hinterlegt.";
- const overview=x.overview||"";$("detailOverview").textContent=overview;$("detailOverviewBlock").classList.toggle("hidden",!overview);
+ let overview=x.overview||"";$("detailOverview").textContent=overview;$("detailOverviewBlock").classList.toggle("hidden",!overview);
  $("detailDirectors").textContent=(x.directors||[]).join(", ")||"–";
  $("detailActors").textContent=(x.actors||[]).join(", ")||"–";
  $("detailGenres").textContent=(x.genres||[]).join(", ")||"–";
@@ -634,6 +672,26 @@ function openDetail(x){
  $("detailOriginalTitle").textContent=x.original_title||"–";
  $("detailEan").textContent=x.ean||"–";$("detailMedium").textContent=x.medium||"–";$("detailEdition").textContent=x.edition_name||"–";$("detailPublisher").textContent=x.publisher||"–";
  $("detailOverlay").classList.remove("hidden");
+
+ // Bestehende Katalogeinträge aus älteren Datenständen können noch keine
+ // Beschreibung enthalten. Wenn eine TMDb-ID vorhanden ist, laden wir sie
+ // beim ersten Öffnen nach und speichern sie dauerhaft im Titel-Datensatz.
+ if(!overview && x.tmdb_type && x.tmdb_id){
+  try{
+   const base=String(window.DVD_LOOKUP_WORKER_URL||"").replace(/\/+$/,"");
+   if(base){
+    const r=await fetch(`${base}/tmdb-detail?type=${encodeURIComponent(x.tmdb_type)}&id=${encodeURIComponent(x.tmdb_id)}`,{cache:"no-store"});
+    const d=await r.json();
+    if(r.ok && d.found && d.overview){
+     overview=d.overview;
+     x.overview=overview;
+     $("detailOverview").textContent=overview;
+     $("detailOverviewBlock").classList.remove("hidden");
+     if(db && x.title_id)await db.from("titles").update({overview}).eq("id",x.title_id);
+    }
+   }
+  }catch(_){/* Detailansicht bleibt auch ohne nachgeladene Beschreibung nutzbar. */}
+ }
 }
 function closeDetail(){detailItem=null;$("detailOverlay").classList.add("hidden")}
 $("closeDetail").onclick=closeDetail;
@@ -658,10 +716,6 @@ function openEdit(x){
   $("editCoverPreview").classList.add("hidden");
  }
  $("editTitle").value=x.title||"";
- $("editContentType").value=x.content_type||(x.tmdb_type==="tv"?"series":"movie");
- $("editSeason").value=x.season_number??"";
- $("editGenres").value=(x.genres||[]).join(", ");
- $("editFsk").value=x.fsk||"";
  $("editActors").value=(x.actors||[]).join(", ");
  $("editDirectors").value=(x.directors||[]).join(", ");
  $("editMedium").value=["DVD","Blu-ray","4K UHD","Sonstiges"].includes(x.medium)?x.medium:(x.medium?"Sonstiges":"");
@@ -754,13 +808,8 @@ async function saveEdit(){
  if(!db||!editing)return;
  $("editError").classList.add("hidden");
 
- const editSeasonRaw=$("editSeason").value.trim();
  const titleUpdate={
   title:$("editTitle").value.trim()||editing.title,
-  content_type:$("editContentType").value||null,
-  season_number:editSeasonRaw===""?null:parseInt(editSeasonRaw,10),
-  genres:csvToArray($("editGenres").value),
-  fsk:$("editFsk").value.trim()||null,
   actors:csvToArray($("editActors").value),
   directors:csvToArray($("editDirectors").value)
  };
@@ -1011,25 +1060,6 @@ async function findTitleByExactName(title){
  return q.data?.[0]||null;
 }
 
-async function findTitleForManualSave(title,acceptedTmdb,seasonNumber=null){
- if(!db)return null;
-
- // TMDb identifiziert bei TV die Serie, nicht die einzelne Staffel.
- // Deshalb ist die Staffel Teil unserer Katalog-Identität.
- if(acceptedTmdb?.tmdb_id && acceptedTmdb?.tmdb_type){
-  let query=db.from("titles")
-   .select("*")
-   .eq("tmdb_type",acceptedTmdb.tmdb_type)
-   .eq("tmdb_id",acceptedTmdb.tmdb_id);
-  query=seasonNumber===null ? query.is("season_number",null) : query.eq("season_number",seasonNumber);
-  const q=await query.limit(1);
-  if(q.error)throw q.error;
-  return q.data?.[0]||null;
- }
-
- return await findTitleByExactName(title);
-}
-
 
 function clearManualTmdbResult(){
  manualTmdbData=null;
@@ -1123,8 +1153,6 @@ async function selectManualTmdbCandidate(type,id){
   manualTmdbData=d;
 
   $("manualFullTitle").value=d.title||candidate?.title||$("manualFullTitle").value;
-  if(d.tmdb_type==="tv")$("manualFullContentType").value="series";
-  else if(d.tmdb_type==="movie")$("manualFullContentType").value="movie";
   if(!$("manualFullActors").value.trim()&&d.actors?.length)$("manualFullActors").value=d.actors.join(", ");
   if(!$("manualFullGenres").value.trim()&&d.genres?.length)$("manualFullGenres").value=d.genres.join(", ");
 
@@ -1167,9 +1195,6 @@ async function saveManualFullEntry(){
  const medium=$("manualFullMedium").value;
  const actors=csvToArray($("manualFullActors").value);
  const genres=csvToArray($("manualFullGenres").value);
- const contentType=$("manualFullContentType").value||null;
- const seasonRaw=$("manualFullSeason").value.trim();
- const seasonNumber=seasonRaw===""?null:parseInt(seasonRaw,10);
 
  const acceptedTmdb = manualTmdbData?.tmdb_id ? manualTmdbData : null;
 
@@ -1200,7 +1225,7 @@ async function saveManualFullEntry(){
 
   const coverUrl=await uploadManualCover(ean);
   const expectedPosterUrl=coverUrl||acceptedTmdb?.poster_url||null;
-  let titleRow=await findTitleForManualSave(title,acceptedTmdb,seasonNumber);
+  let titleRow=await findTitleByExactName(title);
   let titleId;
 
   if(titleRow){
@@ -1224,11 +1249,10 @@ async function saveManualFullEntry(){
    if((!titleRow.production_countries||titleRow.production_countries.length===0)&&acceptedTmdb?.production_countries?.length)patch.production_countries=acceptedTmdb.production_countries;
    if(!titleRow.tmdb_type && acceptedTmdb?.tmdb_type)patch.tmdb_type=acceptedTmdb.tmdb_type;
    if(!titleRow.tmdb_id && acceptedTmdb?.tmdb_id)patch.tmdb_id=acceptedTmdb.tmdb_id;
-   if(!titleRow.content_type && contentType)patch.content_type=contentType;
-   if(titleRow.season_number==null && seasonNumber!==null)patch.season_number=seasonNumber;
    if(!titleRow.poster_url && expectedPosterUrl){
     patch.poster_url=expectedPosterUrl;
    }
+   if(!titleRow.overview && acceptedTmdb?.overview)patch.overview=acceptedTmdb.overview;
 
    if(Object.keys(patch).length){
     const upd=await db.from("titles").update(patch).eq("id",titleId);
@@ -1238,8 +1262,6 @@ async function saveManualFullEntry(){
    const titleInsert=await db.from("titles").insert({
     tmdb_type:acceptedTmdb?.tmdb_type||null,
     tmdb_id:acceptedTmdb?.tmdb_id||null,
-    content_type:contentType||(acceptedTmdb?.tmdb_type==="tv"?"series":"movie"),
-    season_number:seasonNumber,
     title,
     original_title:acceptedTmdb?.original_title||null,
     release_year:acceptedTmdb?.release_year||null,
@@ -1249,7 +1271,8 @@ async function saveManualFullEntry(){
     runtime_minutes:acceptedTmdb?.runtime_minutes||null,
     fsk:acceptedTmdb?.fsk||null,
     production_countries:acceptedTmdb?.production_countries||[],
-    poster_url:expectedPosterUrl
+    poster_url:expectedPosterUrl,
+    overview:acceptedTmdb?.overview||null
    }).select("id").single();
 
    if(titleInsert.error)throw titleInsert.error;
@@ -1289,8 +1312,6 @@ async function saveManualFullEntry(){
   $("manualFullMedium").value="";
   $("manualFullActors").value="";
   $("manualFullGenres").value="";
-  $("manualFullContentType").value="movie";
-  $("manualFullSeason").value="";
   $("manualCoverFile").value="";
   $("manualCoverCamera").value="";
   $("manualCoverPreview").classList.add("hidden");
