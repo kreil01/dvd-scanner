@@ -248,8 +248,15 @@ input,textarea,select{width:100%;background:#0c1728;color:var(--text);border:1px
     padding:8px;border-radius:16px
   }
   .sidebar>.brand,.sidebar-foot{display:none}
-  .sidebar .tabs{margin:0;display:flex;flex-direction:row}
-  .sidebar .tab{justify-content:center}
+  .sidebar .tabs{margin:0;display:flex;flex-direction:row;width:100%}
+  .sidebar .tab{
+    justify-content:center;
+    flex:1 1 0;
+    width:auto;
+    min-width:0;
+    padding-left:6px;
+    padding-right:6px;
+  }
   .scan-layout,.report-grid{grid-template-columns:1fr}
 }
 @media(max-width:680px){
@@ -343,20 +350,4 @@ body{background:radial-gradient(circle at 75% 0%,rgba(45,108,223,.13),transparen
 #manualCoverCamera,#editCoverCamera{display:none}
 @media(max-width:620px){
   .cover-source-actions{grid-template-columns:1fr}
-}
-
-/* FIX v0.2.1 – Desktop-Sidebar: eigener reservierter Bereich, keine Überdeckung */
-@media (min-width:981px){
-  .app{
-    width:min(1580px,100%);
-    padding-left:250px;
-  }
-  .sidebar{
-    left:max(18px,calc((100vw - 1580px)/2 + 18px));
-    width:210px;
-  }
-  .workspace{
-    width:100%;
-    min-width:0;
-  }
 }
