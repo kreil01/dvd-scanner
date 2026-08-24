@@ -1,14 +1,417 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#140f0c" />
-  <meta name="description" content="Heimwerk – private Vorhaben strukturiert voranbringen." />
-  <title>Heimwerk v0.2.2</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0F172A">
+<title>Filmarchiv v0.2</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="brand brand-login">
+      <div class="brand-mark">FA</div>
+      <div><strong>Meine Filmsammlung</strong><span>Collector · v0.2</span></div>
+    </div>
+    <h1>Willkommen zurück</h1>
+    <p class="muted">Melde dich an, um deine Filmsammlung zu öffnen.</p>
+    <label>E-Mail<input id="loginEmail" type="email" autocomplete="username" placeholder="name@beispiel.de"></label>
+    <label>Passwort<input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+    <button id="loginSubmit" class="primary full">Anmelden</button>
+    <div id="loginError" class="error hidden"></div>
+    <div id="loginInfo" class="login-note">
+      Der Zugang wird im Supabase-Dashboard unter <strong>Authentication → Users</strong> verwaltet.
+    </div>
+  </div>
+</div>
+
+<main class="app hidden" id="appMain">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">FA</div>
+      <div><strong>Meine Filmsammlung</strong><span>Collector · v0.2</span></div>
+    </div>
+
+    <nav class="tabs sidebar-nav" aria-label="Hauptnavigation">
+      <button class="tab active" data-tab="dashboard"><span class="nav-icon">⌂</span><span>Dashboard</span></button>
+      <button class="tab" data-tab="collection"><span class="nav-icon">▦</span><span>Sammlung</span></button>
+      <button class="tab" data-tab="scan"><span class="nav-icon">＋</span><span>Erfassen</span></button>
+      <button class="tab" data-tab="reporting"><span class="nav-icon">⌁</span><span>Statistik</span></button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="sidebar-caption">ANGEMELDET</div>
+      <div id="userEmail" class="user-email"></div>
+      <button id="logout" class="ghost full">Abmelden</button>
+    </div>
+  </aside>
+
+  <section class="workspace">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">FILMARCHIV</div>
+        <h1>Meine Filmsammlung</h1>
+        <p>Große Filme. Einfache Verwaltung.</p>
+      </div>
+      <div class="topbar-actions">
+        <div id="status" class="status-pill">Bereit</div><button id="quickAdd" class="primary compact-button" type="button">+ Hinzufügen</button>
+      </div>
+    </header>
+    <section id="dashboardPanel" class="panel">
+      <div class="page-heading row"><div><div class="eyebrow">PRIVATE FILMSAMMLUNG</div><h2>Dashboard</h2><p>Deine Sammlung auf einen Blick.</p></div></div>
+      <div id="dashboardKpis" class="dashboard-kpis">
+        <div class="dash-kpi"><span>Datenträger</span><strong>0</strong><small>Gesamtbestand</small></div>
+        <div class="dash-kpi"><span>Titel</span><strong>0</strong><small>Einzigartige Titel</small></div>
+        <div class="dash-kpi"><span>Blu-rays</span><strong>0</strong><small>HD-Medien</small></div>
+        <div class="dash-kpi"><span>DVDs</span><strong>0</strong><small>Klassische Medien</small></div>
+      </div>
+      <div class="dashboard-grid">
+        <div class="card"><div class="panel-head"><div><div class="card-kicker">ZULETZT ERFASST</div><h3>Neu in deiner Sammlung</h3></div><button id="dashAll" class="text-button">Alle anzeigen</button></div><div id="recentMovies" class="cover-strip"></div></div>
+        <div class="card"><div class="card-kicker">MEDIENMIX</div><h3>Formate</h3><div id="dashboardMediaBars"></div></div>
+      </div>
+      <div class="card"><div class="card-kicker">SCHNELLZUGRIFF</div><h3>Sammlung durchsuchen</h3><div class="dash-search"><input id="dashboardSearch" placeholder="Titel, Schauspieler, Genre …"><button id="dashboardSearchBtn" class="secondary">Suchen</button></div></div>
+    </section>
+
+    <section id="scanPanel" class="panel hidden">
+      <div class="page-heading">
+        <div><h2>Medium erfassen</h2><p>Barcode fotografieren, Daten automatisch ermitteln und speichern.</p></div>
+      </div>
+
+      <div class="scan-layout">
+        <div class="card location-card">
+          <div class="card-kicker">STANDORT</div>
+          <h3>Ablage festlegen</h3>
+          <div class="location-grid">
+            <label>Bereich<input id="area" placeholder="z. B. Wohnzimmer"></label>
+            <label>Regal<input id="shelf" placeholder="z. B. Regal 2"></label>
+            <label>Fach<input id="compartment" placeholder="z. B. Fach 3"></label>
+            <label>Position<input id="position" type="number" min="1" placeholder="automatisch"></label>
+          </div>
+          <p class="muted">Bleibt Position leer, wird sie innerhalb des Fachs automatisch fortgezählt.</p>
+        </div>
+
+        <div class="card scan-card">
+          <div class="scan-hero-icon">▥</div>
+          <div class="card-kicker">BARCODE-SCAN</div>
+          <h3>DVD oder Blu-ray fotografieren</h3>
+          <p class="muted">Barcode möglichst gerade, scharf und ohne Spiegelung aufnehmen.</p>
+          <label class="scanbtn" for="file"><span>▣</span> Kamera öffnen</label>
+          <input id="file" type="file" accept="image/*" capture="environment">
+          <div id="previewWrap" class="preview-wrap hidden"><img id="preview" alt="Barcode-Foto"></div>
+          <div id="scanStatus" class="scan-status"></div>
+          <div id="progress" class="info hidden">Foto wird ausgewertet …</div>
+          <div id="error" class="error hidden"></div>
+        </div>
+      </div>
+
+
+      <div class="manual-capture-grid">
+        <div class="card manual-barcode-card">
+          <div class="card-kicker">BARCODE MANUELL</div>
+          <h3>EAN-13 eingeben</h3>
+          <p class="muted">Alle 13 Ziffern müssen eingegeben werden. Danach werden Produkt- und Filmdaten wie beim Scan automatisch gesucht und gespeichert.</p>
+
+          <div id="manualEanDigits" class="ean-digits" aria-label="13-stelliger Barcode">
+            <input class="ean-digit" id="manualDigit1" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 1">
+            <input class="ean-digit" id="manualDigit2" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 2">
+            <input class="ean-digit" id="manualDigit3" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 3">
+            <input class="ean-digit" id="manualDigit4" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 4">
+            <input class="ean-digit" id="manualDigit5" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 5">
+            <input class="ean-digit" id="manualDigit6" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 6">
+            <input class="ean-digit" id="manualDigit7" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 7">
+            <input class="ean-digit" id="manualDigit8" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 8">
+            <input class="ean-digit" id="manualDigit9" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 9">
+            <input class="ean-digit" id="manualDigit10" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 10">
+            <input class="ean-digit" id="manualDigit11" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 11">
+            <input class="ean-digit" id="manualDigit12" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 12">
+            <input class="ean-digit" id="manualDigit13" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Ziffer 13">
+          </div>
+
+          <button id="manualBarcodeSubmit" class="primary full" type="button" disabled>Barcode suchen</button>
+          <div id="manualBarcodeError" class="error hidden"></div>
+        </div>
+
+        <div class="card manual-entry-card">
+          <div class="card-kicker">KOMPLETT MANUELL</div>
+          <h3>Film ohne Datenbanktreffer erfassen</h3>
+          <p class="muted">Pflichtfelder sind Barcode, Titel und Medium. Schauspieler und Genre sind optional.</p>
+
+          <div class="manual-form-grid">
+            <label>Barcode (optional)<input id="manualFullBarcode" inputmode="numeric" maxlength="13" placeholder="13-stellige EAN"></label>
+            <label>Medium *
+              <select id="manualFullMedium">
+                <option value="">– auswählen –</option>
+                <option value="DVD">DVD</option>
+                <option value="Blu-ray">Blu-ray</option>
+                <option value="4K UHD">4K UHD</option>
+                <option value="Sonstiges">Sonstiges</option>
+              </select>
+            </label>
+            <label class="span-2">Titel *<input id="manualFullTitle" placeholder="Filmtitel"></label>
+            <label>Typ
+              <select id="manualFullContentType"><option value="movie">Film</option><option value="series">Serie</option></select>
+            </label>
+            <label>Staffel <span class="muted">(bei Serie)</span><input id="manualFullSeason" type="number" min="0" step="1" placeholder="z. B. 1"></label>
+            <label class="span-2">Schauspieler <span class="muted">(durch Komma trennen)</span>
+              <textarea id="manualFullActors" rows="2" placeholder="z. B. Tom Hanks, Meg Ryan"></textarea>
+            </label>
+            <label class="span-2">Genre <span class="muted">(durch Komma trennen)</span>
+              <input id="manualFullGenres" placeholder="z. B. Drama, Komödie">
+            </label>
+          </div>
+
+          <div class="manual-photo-box">
+            <div class="cover-source-actions">
+              <label class="secondary photo-button" for="manualCoverCamera">Foto aufnehmen</label>
+              <label class="secondary photo-button" for="manualCoverFile">Aus Galerie / Dateien wählen</label>
+            </div>
+            <input id="manualCoverCamera" type="file" accept="image/*" capture="environment">
+            <input id="manualCoverFile" type="file" accept="image/*">
+            <div id="manualPhotoInfo" class="muted">Smartphone-Fotos werden vor dem Upload automatisch auf maximal 900 × 1350 px und als komprimiertes JPEG reduziert.</div>
+            <img id="manualCoverPreview" class="manual-cover-preview hidden" alt="Manuelles Cover">
+          </div>
+
+          <div class="manual-tmdb-actions">
+            <button id="manualTmdbLookup" class="secondary full" type="button">In TMDb suchen</button>
+            <button id="manualFullSubmit" class="primary full" type="button">Film manuell speichern</button>
+          </div>
+
+          <div id="manualTmdbResult" class="match-review hidden">
+            <div class="match-review-head">
+              <div>
+                <div class="card-kicker">TMDb-TREFFER</div>
+                <h3>Passenden Film auswählen</h3>
+              </div>
+              <span id="manualTmdbCount" class="confidence-badge">–</span>
+            </div>
+            <p class="muted">Die manuelle Suche zeigt mehrere TMDb-Kandidaten. Erst Ihre Auswahl übernimmt die Metadaten.</p>
+            <div id="manualTmdbCandidates" class="tmdb-candidate-list"></div>
+            <div class="review-actions">
+              <button id="manualTmdbReject" class="secondary" type="button">Treffer ignorieren</button>
+            </div>
+          </div>
+
+          <div id="manualFullError" class="error hidden"></div>
+          <div id="manualFullSuccess" class="info hidden"></div>
+        </div>
+      </div>
+
+      <div id="result" class="card result-card hidden">
+        <div class="result-topline">
+          <div><div class="card-kicker">SCAN-ERGEBNIS</div><div class="ean" id="ean"></div></div>
+          <div id="lookupState" class="status-pill"></div>
+        </div>
+        <div class="result-grid">
+          <img id="poster" class="poster hidden" alt="Cover">
+          <div class="result-copy">
+            <h2 id="title"></h2>
+            <p id="filmMeta" class="film-meta"></p>
+            <p id="people"></p>
+            <p id="editionMeta"></p>
+            <p id="saveState" class="save-state"></p>
+            <pre id="saveError" class="save-error hidden"></pre>
+          </div>
+        </div>
+        <div id="duplicate" class="warn hidden"></div>
+
+        <div id="matchReview" class="match-review hidden">
+          <div class="match-review-head">
+            <div>
+              <div class="card-kicker">ZUORDNUNG PRÜFEN</div>
+              <h3>Film vor dem Speichern bestätigen</h3>
+            </div>
+            <span id="matchConfidence" class="confidence-badge">–</span>
+          </div>
+
+          <div class="match-metrics">
+            <div><span>Titelähnlichkeit</span><strong id="matchSimilarity">–</strong></div>
+            <div><span>TMDb Score</span><strong id="matchScore">–</strong></div>
+            <div><span>Teil/Episode</span><strong id="matchPart">–</strong></div>
+          </div>
+
+          <div id="matchWarning" class="warn hidden"></div>
+
+          <div class="review-form">
+            <label>Titel prüfen / korrigieren
+              <input id="reviewTitle" type="text">
+            </label>
+            <label>Medium
+              <select id="reviewMedium">
+                <option value="">– unbekannt –</option>
+                <option value="DVD">DVD</option>
+                <option value="Blu-ray">Blu-ray</option>
+                <option value="4K UHD">4K UHD</option>
+                <option value="Sonstiges">Sonstiges</option>
+              </select>
+            </label>
+          </div>
+
+          <p id="reviewTitleHint" class="muted"></p>
+
+          <div class="review-actions">
+            <button id="confirmLookupSave" class="primary" type="button">Zuordnung bestätigen &amp; speichern</button>
+            <button id="rejectLookup" class="secondary" type="button">Nicht korrekt – manuell erfassen</button>
+          </div>
+        </div>
+
+        <button id="refreshEanCache" class="secondary full hidden" type="button">EAN-Zuordnung neu prüfen</button>
+        <button id="next" class="primary full">Nächste DVD erfassen</button>
+      </div>
+    </section>
+
+    <section id="collectionPanel" class="panel hidden">
+      <div class="page-heading row">
+        <div><h2>Sammlung</h2><p><strong id="count">0</strong> physische Ausgaben in deinem Filmarchiv.</p></div>
+        <div class="collection-head-actions"><div class="view-toggle"><button id="viewGrid" class="view-btn active">▦ Karten</button><button id="viewTable" class="view-btn">☷ Tabelle</button></div><button id="refresh" class="secondary">↻</button></div>
+      </div>
+      <div class="card collection-toolbar">
+        <div class="search-wrap"><span>⌕</span><input id="search" class="search" placeholder="Titel, Schauspieler, Regisseur, Genre, Jahr, FSK, EAN, Standort …"></div>
+        <select id="mediumFilter"><option value="">Alle Formate</option><option>DVD</option><option>Blu-ray</option><option>4K UHD</option><option>Sonstiges</option></select>
+        <select id="collectionSort"><option value="title">Titel A–Z</option><option value="recent">Zuletzt erfasst</option><option value="year-desc">Jahr ↓</option><option value="year-asc">Jahr ↑</option></select>
+        <button id="resetCollectionFilters" class="secondary filter-reset" type="button" disabled>Filter zurücksetzen</button>
+        <div id="searchSummary" class="muted"></div>
+      </div>
+      <div id="groups" class="collector-grid"></div>
+      <div id="collectionTableWrap" class="collection-table-wrap hidden"><table class="collection-table"><thead><tr><th>Cover</th><th>Titel</th><th>Format</th><th>Jahr</th><th>Genre</th><th>Standort</th><th></th></tr></thead><tbody id="collectionTableBody"></tbody></table></div>
+    </section>
+
+    <section id="reportingPanel" class="panel hidden">
+      <div class="page-heading row">
+        <div><h2>Statistik</h2><p>Deine Sammlung in Zahlen.</p></div>
+        <button id="refreshReport" class="secondary">↻ Aktualisieren</button>
+      </div>
+      <div class="card"><div id="kpis" class="kpis"></div></div>
+      <div class="report-grid">
+        <div class="card"><div class="card-kicker">BESTAND</div><h3>Medien</h3><div id="mediaReport"></div></div>
+        <div class="card"><div class="card-kicker">INHALT</div><h3>Top Genres</h3><div id="genreReport"></div></div>
+        <div class="card"><div class="card-kicker">DUBLETTEN</div><h3>Doppelte Filme</h3><div id="duplicateReport"></div></div>
+        <div class="card"><div class="card-kicker">ABLAGE</div><h3>Standorte</h3><div id="locationReport"></div></div>
+      </div>
+    </section>
+
+    <div id="detailOverlay" class="overlay hidden">
+      <div class="modal detail-drawer detail-readonly">
+        <div class="row modal-head">
+          <div><div class="card-kicker">DETAILANSICHT</div><h2 id="detailTitle">–</h2></div>
+          <button id="closeDetail" class="icon-button" aria-label="Schließen">×</button>
+        </div>
+
+        <div class="detail-hero">
+          <div>
+            <img id="detailPoster" class="detail-poster hidden" alt="Cover">
+            <div id="detailPosterPlaceholder" class="detail-poster-placeholder">◉</div>
+          </div>
+          <div>
+            <div id="detailBadges" class="detail-badges"></div>
+            <div id="detailMeta" class="detail-meta"></div>
+            <div id="detailLocation" class="detail-location"></div>
+          </div>
+        </div>
+
+        <div id="detailOverviewBlock" class="detail-section hidden">
+          <div class="card-kicker">INHALT</div>
+          <p id="detailOverview" class="detail-overview"></p>
+        </div>
+
+        <div class="detail-section">
+          <div class="card-kicker">FILMDATEN</div>
+          <dl class="detail-list">
+            <div><dt>Regie</dt><dd id="detailDirectors">–</dd></div>
+            <div><dt>Schauspieler</dt><dd id="detailActors">–</dd></div>
+            <div><dt>Genre</dt><dd id="detailGenres">–</dd></div>
+            <div><dt>FSK</dt><dd id="detailFsk">–</dd></div>
+            <div><dt>Laufzeit</dt><dd id="detailRuntime">–</dd></div>
+            <div><dt>Originaltitel</dt><dd id="detailOriginalTitle">–</dd></div>
+          </dl>
+        </div>
+
+        <div class="detail-section">
+          <div class="card-kicker">AUSGABE</div>
+          <dl class="detail-list">
+            <div><dt>EAN</dt><dd id="detailEan">–</dd></div>
+            <div><dt>Medium</dt><dd id="detailMedium">–</dd></div>
+            <div><dt>Edition</dt><dd id="detailEdition">–</dd></div>
+            <div><dt>Verlag / Label</dt><dd id="detailPublisher">–</dd></div>
+          </dl>
+        </div>
+
+        <div class="detail-actions">
+          <button id="detailEditBtn" class="primary" type="button">Bearbeiten</button>
+          <button id="detailCloseBtn" class="secondary" type="button">Schließen</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="editOverlay" class="overlay hidden">
+      <div class="modal">
+        <div class="row modal-head">
+          <div><div class="card-kicker">MEDIUM VERWALTEN</div><h2>Eintrag bearbeiten</h2></div>
+          <button id="closeEdit" class="icon-button" aria-label="Schließen">×</button>
+        </div>
+        <h3>Filmdaten</h3>
+        <label>Titel<input id="editTitle"></label>
+        <label>Schauspieler <span class="muted">(durch Komma trennen)</span><textarea id="editActors" rows="3"></textarea></label>
+        <label>Regisseur <span class="muted">(durch Komma trennen)</span><textarea id="editDirectors" rows="2"></textarea></label>
+        <h3>Physische Ausgabe</h3>
+        <label>Medium
+          <select id="editMedium">
+            <option value="">– auswählen –</option><option>DVD</option><option>Blu-ray</option><option>4K UHD</option><option>Sonstiges</option>
+          </select>
+        </label>
+        <div class="location-grid">
+          <label>Bereich<input id="editArea"></label><label>Regal<input id="editShelf"></label>
+          <label>Fach<input id="editCompartment"></label><label>Position<input id="editPosition" type="number" min="1"></label>
+        </div>
+        <h3>Cover</h3>
+        <div class="edit-cover-box">
+          <div class="edit-cover-row">
+            <div>
+              <img id="editCoverPreview" class="edit-cover-preview hidden" alt="Aktuelles Cover">
+              <div id="editCoverLoadError" class="error hidden">Cover-URL vorhanden, Bild konnte aber nicht geladen werden.</div>
+            </div>
+            <div class="edit-cover-controls">
+              <div class="cover-source-actions">
+                <label class="secondary photo-button" for="editCoverCamera">Foto aufnehmen</label>
+                <label class="secondary photo-button" for="editCoverFile">Aus Galerie / Dateien wählen</label>
+              </div>
+              <input id="editCoverCamera" type="file" accept="image/*" capture="environment">
+              <input id="editCoverFile" type="file" accept="image/*">
+              <button id="editCoverRemove" class="ghost" type="button">Cover entfernen</button>
+              <div id="editCoverInfo" class="muted">Kein neues Cover ausgewählt.</div>
+              <div id="editCoverUrl" class="muted"></div>
+            </div>
+          </div>
+        </div>
+        <div id="editError" class="error hidden"></div>
+        <div class="edit-actions"><button id="saveEdit" class="primary">Änderungen speichern</button><button id="deleteEdition" class="danger">Ausgabe löschen</button></div>
+      </div>
+    </div>
+
+    <div class="tech-card">
+      <details>
+        <summary>Technischer Status</summary>
+        <div class="tech-content">
+          <p id="tech"></p>
+          <h3>Supabase-Diagnose</h3>
+          <p class="muted">Dieser Test liest nur Daten und verändert nichts.</p>
+          <button id="testSupabase" class="secondary full">Supabase-Verbindung testen</button>
+          <div class="diag-grid">
+            <div><strong>Geladene Project URL</strong><pre id="diagSupabaseUrl">–</pre></div>
+            <div><strong>Key-Info</strong><pre id="diagSupabaseKey">–</pre></div>
+            <div><strong>Test</strong><pre id="diagSupabaseTest">–</pre></div>
+            <div><strong>Antwort / Fehler</strong><pre id="diagSupabaseResponse">–</pre></div>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+</main>
+<script src="config.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
